@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, vi, afterEach } from 'vitest';
 import { SonarQubeClient } from '../../src/sonar/client.js';
 import * as path from 'path';
 import * as fs from 'fs/promises';
@@ -118,7 +118,12 @@ describe('Java Version Detection', () => {
 
   describe('integration with buildScannerParameters', () => {
     it('should include Java version in final scanner parameters', async () => {
-      // Arrange
+      // Arrange - Mock the addMavenLibraries method to prevent Maven execution
+      const originalAddMavenLibraries = (client as any).addMavenLibraries;
+      if (originalAddMavenLibraries) {
+        (client as any).addMavenLibraries = vi.fn().mockResolvedValue(undefined);
+      }
+
       const buildScannerParameters = (client as any).buildScannerParameters?.bind(client);
 
       if (!buildScannerParameters) {
@@ -137,9 +142,14 @@ describe('Java Version Detection', () => {
       // Assert
       const versionParam = params.find((p: string) => p.startsWith('-Dsonar.java.source='));
 
-      // This might not be implemented yet, but we're writing the test first (TDD)
-      // expect(versionParam).toBeDefined();
-      // expect(versionParam).toBe('-Dsonar.java.source=11');
+      // Verify Java version was detected from pom.xml
+      expect(versionParam).toBeDefined();
+      expect(versionParam).toBe('-Dsonar.java.source=11');
+
+      // Cleanup - Restore original method
+      if (originalAddMavenLibraries) {
+        (client as any).addMavenLibraries = originalAddMavenLibraries;
+      }
     });
   });
 });
