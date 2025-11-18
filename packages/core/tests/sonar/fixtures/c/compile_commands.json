@@ -1,0 +1,12 @@
+[
+  {
+    "directory": "/home/user/project/build",
+    "command": "/usr/bin/cc -I/home/user/project/include -std=c11 -o CMakeFiles/test_app.dir/src/main.c.o -c /home/user/project/src/main.c",
+    "file": "/home/user/project/src/main.c"
+  },
+  {
+    "directory": "/home/user/project/build",
+    "command": "/usr/bin/cc -I/home/user/project/include -std=c11 -o CMakeFiles/test_app.dir/src/utils.c.o -c /home/user/project/src/utils.c",
+    "file": "/home/user/project/src/utils.c"
+  }
+]

@@ -1,0 +1,7 @@
+
+# Bob the Fixer local configuration
+bobthefixer.env
+
+# Test coverage
+coverage/
+.vitest/

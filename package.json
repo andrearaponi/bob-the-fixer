@@ -1,0 +1,38 @@
+{
+  "name": "bob-the-fixer",
+  "version": "0.1.0",
+  "description": "MCP Server for Code Quality & Security Analysis - SonarQube integration through Model Context Protocol",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "cd packages/core && npm run build",
+    "clean": "rm -rf node_modules packages/*/node_modules packages/*/dist",
+    "install:all": "npm install && npm install --workspaces",
+    "start:mcp": "node packages/core/dist/universal-mcp-server.js",
+    "start:mcp:http": "node packages/core/dist/universal-mcp-server-http.js",
+    "dev": "cd packages/core && npm run dev"
+  },
+  "keywords": [
+    "sonarqube",
+    "mcp-server",
+    "model-context-protocol",
+    "ai",
+    "code-quality",
+    "security",
+    "code-analysis",
+    "static-analysis",
+    "devops",
+    "ci-cd",
+    "beta"
+  ],
+  "author": "Andrea Raponi",
+  "license": "AGPL-3.0",
+  "devDependencies": {
+    "@types/node": "^24.2.0",
+    "nodemon": "^3.1.10",
+    "tsx": "^4.20.3",
+    "typescript": "^5.9.2"
+  }
+}

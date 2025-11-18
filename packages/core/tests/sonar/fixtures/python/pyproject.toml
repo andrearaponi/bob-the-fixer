@@ -1,0 +1,13 @@
+[project]
+name = "test-python-project"
+version = "1.0.0"
+requires-python = ">=3.8,<3.12"
+
+[tool.poetry]
+name = "test-python-project"
+version = "1.0.0"
+description = "Test fixture for Python SonarQube analysis"
+
+[tool.poetry.dependencies]
+python = "^3.8"
+requests = "^2.31.0"

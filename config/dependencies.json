@@ -1,0 +1,165 @@
+{
+  "essential": {
+    "nodejs": {
+      "command": "node",
+      "minVersion": "18.0.0",
+      "description": "JavaScript runtime for running Bob the Fixer MCP server",
+      "install": {
+        "macos": {
+          "brew": "brew install node@20"
+        },
+        "linux": {
+          "apt": "curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - && sudo apt-get install -y nodejs",
+          "dnf": "curl -fsSL https://rpm.nodesource.com/setup_20.x | sudo bash - && sudo dnf install -y nodejs",
+          "yum": "curl -fsSL https://rpm.nodesource.com/setup_20.x | sudo bash - && sudo yum install -y nodejs"
+        }
+      }
+    },
+    "npm": {
+      "command": "npm",
+      "description": "Node package manager (usually included with Node.js)",
+      "dependsOn": ["nodejs"]
+    },
+    "git": {
+      "command": "git",
+      "description": "Version control system for cloning repository",
+      "install": {
+        "macos": {
+          "brew": "brew install git"
+        },
+        "linux": {
+          "apt": "sudo apt-get install -y git",
+          "dnf": "sudo dnf install -y git",
+          "yum": "sudo yum install -y git",
+          "pacman": "sudo pacman -S --noconfirm git"
+        }
+      }
+    },
+    "container": {
+      "commands": ["podman", "docker"],
+      "description": "Container runtime for SonarQube (Podman recommended)",
+      "anyOf": true,
+      "install": {
+        "macos": {
+          "podman": "brew install podman && podman machine init && podman machine start",
+          "docker": "Manual installation required: https://docs.docker.com/desktop/install/mac-install/"
+        },
+        "linux": {
+          "podman": {
+            "apt": "sudo apt-get install -y podman",
+            "dnf": "sudo dnf install -y podman",
+            "yum": "sudo yum install -y podman",
+            "pacman": "sudo pacman -S --noconfirm podman"
+          },
+          "docker": {
+            "any": "curl -fsSL https://get.docker.com -o /tmp/get-docker.sh && sudo sh /tmp/get-docker.sh"
+          }
+        }
+      }
+    },
+    "jq": {
+      "command": "jq",
+      "description": "JSON processor for parsing SonarQube API responses",
+      "install": {
+        "macos": {
+          "brew": "brew install jq"
+        },
+        "linux": {
+          "apt": "sudo apt-get install -y jq",
+          "dnf": "sudo dnf install -y jq",
+          "yum": "sudo yum install -y jq",
+          "pacman": "sudo pacman -S --noconfirm jq"
+        }
+      }
+    },
+    "curl": {
+      "command": "curl",
+      "description": "HTTP client for API calls and downloads",
+      "install": {
+        "macos": {
+          "brew": "brew install curl"
+        },
+        "linux": {
+          "apt": "sudo apt-get install -y curl",
+          "dnf": "sudo dnf install -y curl",
+          "yum": "sudo yum install -y curl"
+        }
+      }
+    },
+    "openssl": {
+      "command": "openssl",
+      "description": "Cryptography tool for generating encryption keys",
+      "install": {
+        "macos": {
+          "brew": "brew install openssl"
+        },
+        "linux": {
+          "apt": "sudo apt-get install -y openssl",
+          "dnf": "sudo dnf install -y openssl",
+          "yum": "sudo yum install -y openssl"
+        }
+      }
+    }
+  },
+  "optional": {
+    "sonar-scanner": {
+      "command": "sonar-scanner",
+      "description": "SonarQube scanner CLI for local code analysis",
+      "recommended": true,
+      "install": {
+        "macos": {
+          "brew": "brew install sonar-scanner"
+        },
+        "linux": {
+          "manual": {
+            "url": "https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-5.0.1.3006-linux.zip",
+            "instructions": [
+              "Download and extract to /opt/",
+              "Create symlink to /usr/local/bin/sonar-scanner"
+            ]
+          }
+        }
+      }
+    }
+  },
+  "aiCLIs": {
+    "claude": {
+      "command": "claude",
+      "description": "Anthropic Claude CLI",
+      "install": {
+        "npm": "npm install -g @anthropic-ai/claude-code"
+      },
+      "postInstall": [
+        "claude auth login"
+      ]
+    },
+    "copilot": {
+      "command": ["github-copilot", "gh"],
+      "description": "GitHub Copilot CLI",
+      "dependsOn": ["gh"],
+      "install": {
+        "gh-extension": "gh extension install github/gh-copilot"
+      },
+      "postInstall": [
+        "gh auth login"
+      ]
+    },
+    "openai": {
+      "command": "openai",
+      "description": "OpenAI CLI",
+      "install": {
+        "pip": "pip install openai"
+      },
+      "postInstall": [
+        "export OPENAI_API_KEY='your-api-key'"
+      ]
+    },
+    "gemini": {
+      "command": "gemini",
+      "description": "Google Gemini CLI",
+      "install": {
+        "note": "Not officially available yet"
+      }
+    }
+  }
+}

@@ -1,0 +1,55 @@
+{
+  "required": {
+    "9000": {
+      "service": "SonarQube Web UI",
+      "protocol": "HTTP",
+      "description": "Web interface for SonarQube dashboard and administration",
+      "critical": true,
+      "alternatives": [9001, 9002, 9003],
+      "healthCheck": "http://localhost:9000/api/system/health"
+    },
+    "5432": {
+      "service": "PostgreSQL Database",
+      "protocol": "TCP",
+      "description": "Database backend for SonarQube",
+      "critical": true,
+      "alternatives": [5433, 5434],
+      "internal": true
+    }
+  },
+  "optional": {
+    "9001": {
+      "service": "SonarQube Elasticsearch",
+      "protocol": "HTTP",
+      "description": "Internal search engine (bound to localhost)",
+      "critical": false,
+      "internal": true
+    }
+  },
+  "conflictResolution": {
+    "strategies": [
+      {
+        "name": "kill",
+        "description": "Terminate the process using the port",
+        "requiresConfirmation": true,
+        "requiresSudo": true
+      },
+      {
+        "name": "alternative",
+        "description": "Use an alternative port from the alternatives list",
+        "requiresConfirmation": true,
+        "modifiesConfig": true
+      },
+      {
+        "name": "skip",
+        "description": "Skip port configuration (manual setup required)",
+        "requiresConfirmation": false
+      },
+      {
+        "name": "abort",
+        "description": "Exit installation",
+        "requiresConfirmation": false
+      }
+    ]
+  }
+}

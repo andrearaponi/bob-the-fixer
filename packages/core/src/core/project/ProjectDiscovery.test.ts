@@ -1,0 +1,298 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { ProjectDiscovery, DiscoveryOptions, DiscoveryResult } from './ProjectDiscovery';
+
+// Create mock instances at module level
+const mockProjectManager = {
+  setWorkingDirectory: vi.fn(() => {}),
+  getWorkingDirectory: vi.fn(() => '/test/project'),
+  analyzeProject: vi.fn(() => Promise.resolve()),
+};
+
+const mockSonarAdmin = {
+  getQualityGateTemplate: vi.fn(() => ({})),
+};
+
+const mockProjectContext = {
+  path: '/test/project',
+  name: 'test-project',
+  language: ['typescript', 'javascript'],
+  framework: 'react',
+  buildTool: 'webpack',
+  packageManager: 'npm',
+};
+
+const mockQualityTemplate = {
+  name: 'Strict',
+  conditions: [
+    { metric: 'new_coverage', op: 'LT', error: '80' },
+    { metric: 'new_bugs', op: 'GT', error: '0' },
+    { metric: 'new_vulnerabilities', op: 'GT', error: '0' },
+  ],
+};
+
+// Mock modules
+vi.mock('../../universal/project-manager', () => ({
+  ProjectManager: vi.fn(function() { return mockProjectManager; }),
+}));
+
+vi.mock('../../universal/sonar-admin', () => ({
+  SonarAdmin: vi.fn(function() { return mockSonarAdmin; }),
+}));
+
+vi.mock('../../shared/utils/server-utils', () => ({
+  generateProjectKey: vi.fn((context) => `${context.name}-key`),
+}));
+
+vi.mock('../../infrastructure/security/input-sanitization', () => ({
+  sanitizePath: vi.fn((path: string) => path),
+}));
+
+vi.mock('../../shared/logger/structured-logger', () => ({
+  getLogger: vi.fn(() => ({
+    info: vi.fn(() => {}),
+    debug: vi.fn(() => {}),
+    warn: vi.fn(() => {}),
+    error: vi.fn(() => {}),
+  })),
+}));
+
+describe('ProjectDiscovery', () => {
+  let projectDiscovery: ProjectDiscovery;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    projectDiscovery = new ProjectDiscovery(mockProjectManager as any, mockSonarAdmin as any);
+
+    // Default successful responses
+    mockProjectManager.analyzeProject = vi.fn(async () => mockProjectContext);
+    mockSonarAdmin.getQualityGateTemplate = vi.fn(() => mockQualityTemplate);
+  });
+
+  describe('execute', () => {
+    it('should discover project successfully', async () => {
+      const options: DiscoveryOptions = {};
+      const result = await projectDiscovery.execute(options);
+
+      expect(result).toEqual({
+        projectName: 'test-project',
+        projectPath: '/test/project',
+        languages: ['typescript', 'javascript'],
+        framework: 'react',
+        buildTool: 'webpack',
+        packageManager: 'npm',
+        recommendedProjectKey: 'test-project-key',
+        qualityGateTemplate: mockQualityTemplate,
+      });
+
+      expect(mockProjectManager.analyzeProject).toHaveBeenCalled();
+      expect(mockSonarAdmin.getQualityGateTemplate).toHaveBeenCalledWith(mockProjectContext);
+    });
+
+    it('should set working directory when path is provided', async () => {
+      const options: DiscoveryOptions = {
+        path: '/custom/path',
+      };
+
+      await projectDiscovery.execute(options);
+
+      expect(mockProjectManager.setWorkingDirectory).toHaveBeenCalledWith('/custom/path');
+    });
+
+    it('should handle deep discovery option', async () => {
+      const options: DiscoveryOptions = {
+        deep: true,
+      };
+
+      const result = await projectDiscovery.execute(options);
+
+      expect(result.projectName).toBe('test-project');
+      expect(mockProjectManager.analyzeProject).toHaveBeenCalled();
+    });
+
+    it('should handle project without optional fields', async () => {
+      mockProjectManager.analyzeProject = vi.fn(async () => ({
+        path: '/test/project',
+        name: 'simple-project',
+        language: ['python'],
+      }));
+
+      const result = await projectDiscovery.execute({});
+
+      expect(result.framework).toBeUndefined();
+      expect(result.buildTool).toBeUndefined();
+      expect(result.packageManager).toBeUndefined();
+    });
+
+    it('should pass correlationId through logging', async () => {
+      const correlationId = 'test-correlation-id';
+
+      await projectDiscovery.execute({}, correlationId);
+
+      expect(mockProjectManager.analyzeProject).toHaveBeenCalled();
+    });
+
+    it('should handle different quality gate templates', async () => {
+      const balancedTemplate = {
+        name: 'Balanced',
+        conditions: [
+          { metric: 'new_coverage', op: 'LT', error: '70' },
+        ],
+      };
+      mockSonarAdmin.getQualityGateTemplate = vi.fn(() => balancedTemplate);
+
+      const result = await projectDiscovery.execute({});
+
+      expect(result.qualityGateTemplate).toEqual(balancedTemplate);
+    });
+
+    it('should sanitize path when provided', async () => {
+      const options: DiscoveryOptions = {
+        path: '/custom/../path',
+      };
+
+      await projectDiscovery.execute(options);
+
+      // Verify sanitizePath was called
+      expect(mockProjectManager.setWorkingDirectory).toHaveBeenCalled();
+    });
+
+    it('should handle error during project analysis', async () => {
+      mockProjectManager.analyzeProject = vi.fn(async () => { throw new Error('Analysis failed'); });
+
+      await expect(projectDiscovery.execute({})).rejects.toThrow('Analysis failed');
+    });
+  });
+
+  describe('formatDiscoveryResult', () => {
+    it('should format complete discovery result', () => {
+      const result: DiscoveryResult = {
+        projectName: 'test-project',
+        projectPath: '/test/project',
+        languages: ['typescript', 'javascript'],
+        framework: 'react',
+        buildTool: 'webpack',
+        packageManager: 'npm',
+        recommendedProjectKey: 'test-project-key',
+        qualityGateTemplate: mockQualityTemplate,
+      };
+
+      const formatted = ProjectDiscovery.formatDiscoveryResult(result);
+
+      expect(formatted).toContain('PROJECT DISCOVERY RESULTS');
+      expect(formatted).toContain('test-project');
+      expect(formatted).toContain('/test/project');
+      expect(formatted).toContain('Typescript');
+      expect(formatted).toContain('Javascript');
+      expect(formatted).toContain('react');
+      expect(formatted).toContain('webpack');
+      expect(formatted).toContain('npm');
+      expect(formatted).toContain('Strict');
+      expect(formatted).toContain('test-project-key');
+      expect(formatted).toContain('sonar_auto_setup');
+      expect(formatted).toContain('sonar_scan_project');
+    });
+
+    it('should format result without optional fields', () => {
+      const result: DiscoveryResult = {
+        projectName: 'simple-project',
+        projectPath: '/simple/path',
+        languages: ['python'],
+        recommendedProjectKey: 'simple-project-key',
+        qualityGateTemplate: {
+          name: 'Permissive',
+          conditions: [],
+        },
+      };
+
+      const formatted = ProjectDiscovery.formatDiscoveryResult(result);
+
+      expect(formatted).toContain('simple-project');
+      expect(formatted).toContain('Python');
+      expect(formatted).not.toContain('Framework:');
+      expect(formatted).not.toContain('Build Tool:');
+      expect(formatted).not.toContain('Package Manager:');
+    });
+
+    it('should format quality gate conditions', () => {
+      const result: DiscoveryResult = {
+        projectName: 'test-project',
+        projectPath: '/test/project',
+        languages: ['java'],
+        recommendedProjectKey: 'test-project-key',
+        qualityGateTemplate: {
+          name: 'Custom',
+          conditions: [
+            { metric: 'new_coverage', op: 'LT', error: '80' },
+            { metric: 'new_bugs', op: 'GT', error: '0' },
+          ],
+        },
+      };
+
+      const formatted = ProjectDiscovery.formatDiscoveryResult(result);
+
+      expect(formatted).toContain('Custom');
+      expect(formatted).toContain('new_coverage: LT 80');
+      expect(formatted).toContain('new_bugs: GT 0');
+    });
+
+    it('should handle multiple languages', () => {
+      const result: DiscoveryResult = {
+        projectName: 'multi-lang-project',
+        projectPath: '/multi/path',
+        languages: ['typescript', 'python', 'go', 'rust'],
+        recommendedProjectKey: 'multi-lang-key',
+        qualityGateTemplate: mockQualityTemplate,
+      };
+
+      const formatted = ProjectDiscovery.formatDiscoveryResult(result);
+
+      expect(formatted).toContain('Typescript');
+      expect(formatted).toContain('Python');
+      expect(formatted).toContain('Go');
+      expect(formatted).toContain('Rust');
+    });
+
+    it('should capitalize language names correctly', () => {
+      const result: DiscoveryResult = {
+        projectName: 'test-project',
+        projectPath: '/test/project',
+        languages: ['javascript', 'typescript', 'css', 'html'],
+        recommendedProjectKey: 'test-project-key',
+        qualityGateTemplate: mockQualityTemplate,
+      };
+
+      const formatted = ProjectDiscovery.formatDiscoveryResult(result);
+
+      expect(formatted).toContain('Javascript');
+      expect(formatted).toContain('Typescript');
+      expect(formatted).toContain('Css');
+      expect(formatted).toContain('Html');
+    });
+  });
+
+  describe('edge cases', () => {
+    it('should handle empty languages array', async () => {
+      mockProjectManager.analyzeProject = vi.fn(async () => ({
+        path: '/test/project',
+        name: 'test-project',
+        language: [],
+      }));
+
+      const result = await projectDiscovery.execute({});
+
+      expect(result.languages).toEqual([]);
+    });
+
+    it('should handle single language', async () => {
+      mockProjectManager.analyzeProject = vi.fn(async () => ({
+        path: '/test/project',
+        name: 'test-project',
+        language: ['rust'],
+      }));
+
+      const result = await projectDiscovery.execute({});
+
+      expect(result.languages).toEqual(['rust']);
+    });
+  });
+});

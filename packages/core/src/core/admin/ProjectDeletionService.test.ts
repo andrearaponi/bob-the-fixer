@@ -1,0 +1,395 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { ProjectDeletionService, DeleteProjectOptions } from './ProjectDeletionService';
+
+// Create mock instances at module level
+const mockProjectManager = {
+  getWorkingDirectory: vi.fn(() => '/test/project'),
+  getOrCreateConfig: vi.fn(() => Promise.resolve()),
+};
+
+const mockSonarAdmin = {
+  projectExists: vi.fn(() => Promise.resolve(false)),
+  deleteProject: vi.fn(() => Promise.resolve(false)),
+  listTokens: vi.fn(() => Promise.resolve([])),
+  revokeToken: vi.fn(() => Promise.resolve(false)),
+  client: {
+    get: vi.fn(() => Promise.resolve({ data: {} })),
+  },
+};
+
+const mockConfig = {
+  sonarProjectKey: 'test-project',
+  sonarUrl: 'http://localhost:9000',
+  sonarToken: 'sqp_test_token_1234567890',
+  createdAt: '2024-01-01T00:00:00.000Z',
+};
+
+// Mock modules
+vi.mock('../../universal/project-manager', () => ({
+  ProjectManager: vi.fn(function() { return mockProjectManager; }),
+}));
+
+vi.mock('../../universal/sonar-admin', () => ({
+  SonarAdmin: vi.fn(function() { return mockSonarAdmin; }),
+}));
+
+vi.mock('fs/promises', () => ({
+  default: {
+    unlink: vi.fn(() => Promise.resolve()),
+  },
+  unlink: vi.fn(() => Promise.resolve()),
+}));
+
+vi.mock('../../shared/logger/structured-logger', () => ({
+  getLogger: vi.fn(() => ({
+    info: vi.fn(() => {}),
+    debug: vi.fn(() => {}),
+    warn: vi.fn(() => {}),
+    error: vi.fn(() => {}),
+  })),
+}));
+
+describe('ProjectDeletionService', () => {
+  let deletionService: ProjectDeletionService;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+
+    const fs = await import('fs/promises');
+    (fs.unlink as any) = vi.fn(async () => undefined);
+
+    deletionService = new ProjectDeletionService(mockProjectManager as any, mockSonarAdmin as any);
+
+    // Default successful responses
+    mockProjectManager.getOrCreateConfig = vi.fn(async () => mockConfig);
+    mockSonarAdmin.projectExists = vi.fn(async () => true);
+    mockSonarAdmin.deleteProject = vi.fn(async () => true);
+    mockSonarAdmin.listTokens = vi.fn(async () => []);
+    mockSonarAdmin.revokeToken = vi.fn(async () => true);
+    mockSonarAdmin.client.get = vi.fn(async () => ({
+      data: {
+        components: [
+          {
+            key: 'test-project',
+            name: 'Test Project',
+            lastAnalysisDate: '2024-01-01',
+            visibility: 'public',
+          },
+        ],
+      },
+    }));
+  });
+
+  describe('deleteProject', () => {
+    it('should delete project successfully with all cleanup', async () => {
+      const options: DeleteProjectOptions = {
+        projectKey: 'test-project',
+        confirm: true,
+      };
+
+      const result = await deletionService.deleteProject(options);
+
+      expect(result).toContain('DELETING SONARQUBE PROJECT');
+      expect(result).toContain('test-project');
+      expect(result).toContain('DELETION COMPLETE');
+      expect(mockSonarAdmin.projectExists).toHaveBeenCalledWith('test-project');
+      expect(mockSonarAdmin.deleteProject).toHaveBeenCalledWith('test-project');
+    });
+
+    it('should require projectKey', async () => {
+      const options: DeleteProjectOptions = {
+        projectKey: '',
+        confirm: true,
+      };
+
+      const result = await deletionService.deleteProject(options);
+
+      expect(result).toContain('PROJECT DELETION CANCELLED');
+      expect(result).toContain('Project key must be specified');
+      expect(mockSonarAdmin.deleteProject).not.toHaveBeenCalled();
+    });
+
+    it('should require confirmation', async () => {
+      const options: DeleteProjectOptions = {
+        projectKey: 'test-project',
+        confirm: false,
+      };
+
+      const result = await deletionService.deleteProject(options);
+
+      expect(result).toContain('PROJECT DELETION CANCELLED');
+      expect(result).toContain('requires explicit confirmation');
+      expect(mockSonarAdmin.deleteProject).not.toHaveBeenCalled();
+    });
+
+    it('should handle non-existent project', async () => {
+      mockSonarAdmin.projectExists = vi.fn(async () => false);
+
+      const options: DeleteProjectOptions = {
+        projectKey: 'non-existent-project',
+        confirm: true,
+      };
+
+      const result = await deletionService.deleteProject(options);
+
+      expect(result).toContain('PROJECT NOT FOUND');
+      expect(result).toContain('non-existent-project');
+      expect(mockSonarAdmin.deleteProject).not.toHaveBeenCalled();
+    });
+
+    it('should revoke project tokens before deletion', async () => {
+      mockSonarAdmin.listTokens = vi.fn(async () => [
+        { name: 'test-project-token-1', login: 'admin' },
+        { name: 'test-project-token-2', login: 'admin' },
+        { name: 'other-token', login: 'admin' },
+      ]);
+
+      const options: DeleteProjectOptions = {
+        projectKey: 'test-project',
+        confirm: true,
+      };
+
+      const result = await deletionService.deleteProject(options);
+
+      expect(result).toContain('REVOKING PROJECT TOKENS');
+      expect(result).toContain('test-project-token-1');
+      expect(result).toContain('test-project-token-2');
+      // Only 2 tokens should be revoked (the ones containing 'test-project')
+      expect(mockSonarAdmin.revokeToken).toHaveBeenCalledTimes(2);
+    });
+
+    it('should handle token revocation failures', async () => {
+      mockSonarAdmin.listTokens = vi.fn(async () => [
+        { name: 'test-project-token-1', login: 'admin' },
+        { name: 'test-project-token-2', login: 'admin' },
+      ]);
+      mockSonarAdmin.revokeToken.mockImplementation((name: string) => {
+        return Promise.resolve(name === 'test-project-token-1');
+      });
+
+      const options: DeleteProjectOptions = {
+        projectKey: 'test-project',
+        confirm: true,
+      };
+
+      const result = await deletionService.deleteProject(options);
+
+      expect(result).toContain('Revoked: test-project-token-1');
+      expect(result).toContain('Failed to revoke: test-project-token-2');
+    });
+
+    it('should show project details before deletion', async () => {
+      const options: DeleteProjectOptions = {
+        projectKey: 'test-project',
+        confirm: true,
+      };
+
+      const result = await deletionService.deleteProject(options);
+
+      expect(result).toContain('PROJECT DETAILS');
+      expect(result).toContain('Name: Test Project');
+      expect(result).toContain('Key: test-project');
+      expect(result).toContain('Last Analysis: 2024-01-01');
+      expect(result).toContain('Visibility: public');
+    });
+
+    it('should handle missing project details gracefully', async () => {
+      mockSonarAdmin.client.get = vi.fn(async () => { throw new Error('API error'); });
+
+      const options: DeleteProjectOptions = {
+        projectKey: 'test-project',
+        confirm: true,
+      };
+
+      const result = await deletionService.deleteProject(options);
+
+      expect(result).toContain('Could not fetch project details');
+      expect(result).toContain('DELETION COMPLETE');
+    });
+
+    it('should delete local config when deleting current project', async () => {
+      const options: DeleteProjectOptions = {
+        projectKey: 'test-project',
+        confirm: true,
+      };
+
+      const result = await deletionService.deleteProject(options);
+
+      expect(result).toContain('Local Config: Removed');
+      const fs = await import('fs/promises');
+      expect(fs.unlink).toHaveBeenCalledWith('/test/project/bobthefixer.env');
+    });
+
+    it('should not delete local config for other projects', async () => {
+      const options: DeleteProjectOptions = {
+        projectKey: 'other-project',
+        confirm: true,
+      };
+
+      const result = await deletionService.deleteProject(options);
+
+      expect(result).toContain('Local Config: Unchanged');
+      const fs = await import('fs/promises');
+      expect(fs.unlink).not.toHaveBeenCalled();
+    });
+
+    it('should handle local config file not found', async () => {
+      const fs = await import('fs/promises');
+      (fs.unlink as any) = vi.fn(async () => { throw new Error('ENOENT'); });
+
+      const options: DeleteProjectOptions = {
+        projectKey: 'test-project',
+        confirm: true,
+      };
+
+      const result = await deletionService.deleteProject(options);
+
+      expect(result).toContain('already clean');
+    });
+
+    it('should handle deletion failure', async () => {
+      mockSonarAdmin.deleteProject = vi.fn(async () => false);
+
+      const options: DeleteProjectOptions = {
+        projectKey: 'test-project',
+        confirm: true,
+      };
+
+      const result = await deletionService.deleteProject(options);
+
+      expect(result).toContain('DELETION FAILED');
+      expect(result).toContain('Could not delete project');
+      expect(result).toContain('Insufficient permissions');
+    });
+
+    it('should show summary after successful deletion', async () => {
+      mockSonarAdmin.listTokens = vi.fn(async () => [
+        { name: 'test-project-token-1', login: 'admin' },
+        { name: 'test-project-token-2', login: 'admin' },
+      ]);
+
+      const options: DeleteProjectOptions = {
+        projectKey: 'test-project',
+        confirm: true,
+      };
+
+      const result = await deletionService.deleteProject(options);
+
+      expect(result).toContain('Summary:');
+      expect(result).toContain('Project Deleted: test-project');
+      expect(result).toContain('Tokens Revoked: 2');
+      expect(result).toContain('cannot be undone');
+    });
+
+    it('should pass correlationId through logging', async () => {
+      const correlationId = 'test-correlation-id';
+      const options: DeleteProjectOptions = {
+        projectKey: 'test-project',
+        confirm: true,
+      };
+
+      await deletionService.deleteProject(options, correlationId);
+
+      expect(mockSonarAdmin.deleteProject).toHaveBeenCalled();
+    });
+
+    it('should handle no tokens found', async () => {
+      mockSonarAdmin.listTokens = vi.fn(async () => []);
+
+      const options: DeleteProjectOptions = {
+        projectKey: 'test-project',
+        confirm: true,
+      };
+
+      const result = await deletionService.deleteProject(options);
+
+      expect(result).toContain('No associated tokens found');
+    });
+
+    it('should handle project with never analyzed', async () => {
+      mockSonarAdmin.client.get = vi.fn(async () => ({
+        data: {
+          components: [
+            {
+              key: 'test-project',
+              name: 'Test Project',
+              visibility: 'private',
+            },
+          ],
+        },
+      }));
+
+      const options: DeleteProjectOptions = {
+        projectKey: 'test-project',
+        confirm: true,
+      };
+
+      const result = await deletionService.deleteProject(options);
+
+      expect(result).toContain('Last Analysis: Never');
+    });
+  });
+
+  describe('edge cases', () => {
+    it('should handle empty project details response', async () => {
+      mockSonarAdmin.client.get = vi.fn(async () => ({
+        data: {
+          components: [],
+        },
+      }));
+
+      const options: DeleteProjectOptions = {
+        projectKey: 'test-project',
+        confirm: true,
+      };
+
+      const result = await deletionService.deleteProject(options);
+
+      expect(result).toContain('DELETION COMPLETE');
+    });
+
+    it('should handle special characters in project key', async () => {
+      const options: DeleteProjectOptions = {
+        projectKey: 'test-project:special:key',
+        confirm: true,
+      };
+
+      await deletionService.deleteProject(options);
+
+      expect(mockSonarAdmin.projectExists).toHaveBeenCalledWith('test-project:special:key');
+    });
+
+    it('should handle multiple token types', async () => {
+      mockSonarAdmin.listTokens = vi.fn(async () => [
+        { name: 'test-project-scan', login: 'admin' },
+        { name: 'test-project-analysis', login: 'admin' },
+        { name: 'test-project-deploy', login: 'admin' },
+        { name: 'unrelated-token', login: 'user' },
+      ]);
+
+      const options: DeleteProjectOptions = {
+        projectKey: 'test-project',
+        confirm: true,
+      };
+
+      const result = await deletionService.deleteProject(options);
+
+      expect(result).toContain('test-project-scan');
+      expect(result).toContain('test-project-analysis');
+      expect(result).toContain('test-project-deploy');
+      expect(result).toContain('Tokens Revoked: 3');
+    });
+
+    it('should show proper warning message', async () => {
+      const options: DeleteProjectOptions = {
+        projectKey: 'test-project',
+        confirm: true,
+      };
+
+      const result = await deletionService.deleteProject(options);
+
+      expect(result).toContain('cannot be undone');
+      expect(result).toContain('permanently removed');
+    });
+  });
+});

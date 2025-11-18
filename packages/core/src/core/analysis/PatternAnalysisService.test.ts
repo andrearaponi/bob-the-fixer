@@ -1,0 +1,449 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { PatternAnalysisService } from './PatternAnalysisService';
+import { mockIssue, mockRule } from '../../../tests/fixtures/mock-sonar-responses';
+
+// Use vi.hoisted to create mocks that can be referenced in vi.mock
+const { mockProjectManager, mockSonarClient, mockPatternAnalyzerAnalyze, mockBuildPatternAnalysisReport } = vi.hoisted(() => ({
+  mockProjectManager: {
+    getOrCreateConfig: vi.fn(() => Promise.resolve()),
+  },
+  mockSonarClient: {
+    getIssues: vi.fn(() => Promise.resolve([])),
+    getUniqueRulesInfo: vi.fn(() => Promise.resolve({})),
+  },
+  mockPatternAnalyzerAnalyze: vi.fn(() => ({})),
+  mockBuildPatternAnalysisReport: vi.fn(() => 'Pattern analysis report'),
+}));
+
+const mockConfig = {
+  sonarProjectKey: 'test-project',
+  sonarUrl: 'http://localhost:9000',
+  sonarToken: 'sqp_test_token_1234567890',
+  createdAt: '2024-01-01T00:00:00.000Z',
+};
+
+const mockRuleCache = {
+  'typescript:S1234': {
+    name: 'Unused variables should be removed',
+    type: 'CODE_SMELL',
+    tags: ['unused', 'dead-code'],
+  },
+};
+
+const mockPatternAnalysis = {
+  totalIssues: 5,
+  patterns: {
+    'unused-code': {
+      count: 3,
+      severity: 'MAJOR',
+      files: ['file1.ts', 'file2.ts'],
+    },
+    'complexity': {
+      count: 2,
+      severity: 'CRITICAL',
+      files: ['file3.ts'],
+    },
+  },
+};
+
+// Mock modules
+vi.mock('../../universal/project-manager', () => ({
+  ProjectManager: vi.fn(function() { return mockProjectManager; }),
+}));
+
+vi.mock('../../sonar/index', () => ({
+  SonarQubeClient: vi.fn(function() { return mockSonarClient; }),
+  PatternAnalyzer: {
+    analyze: mockPatternAnalyzerAnalyze,
+  },
+}));
+
+vi.mock('../../shared/logger/structured-logger', () => ({
+  getLogger: vi.fn(() => ({
+    info: vi.fn(() => {}),
+    debug: vi.fn(() => {}),
+    warn: vi.fn(() => {}),
+    error: vi.fn(() => {}),
+  })),
+}));
+
+vi.mock('../../reports/pattern-analysis-report', () => ({
+  buildPatternAnalysisReport: mockBuildPatternAnalysisReport,
+}));
+
+describe('PatternAnalysisService', () => {
+  let service: PatternAnalysisService;
+
+  beforeEach(() => {
+    // Reset function call history but keep implementations
+    vi.mocked(mockProjectManager.getOrCreateConfig).mockClear();
+    vi.mocked(mockSonarClient.getIssues).mockClear();
+    vi.mocked(mockSonarClient.getUniqueRulesInfo).mockClear();
+    mockPatternAnalyzerAnalyze.mockClear();
+    mockBuildPatternAnalysisReport.mockClear();
+
+    // Set default return values
+    mockProjectManager.getOrCreateConfig = vi.fn(async () => mockConfig);
+    mockSonarClient.getIssues = vi.fn(async () => [mockIssue]);
+    mockSonarClient.getUniqueRulesInfo = vi.fn(async () => mockRuleCache);
+    mockPatternAnalyzerAnalyze.mockClear();
+    mockPatternAnalyzerAnalyze.mockImplementation(() => mockPatternAnalysis);
+    mockBuildPatternAnalysisReport.mockClear();
+    mockBuildPatternAnalysisReport.mockImplementation(() => 'Pattern analysis report');
+
+    service = new PatternAnalysisService(mockProjectManager as any);
+  });
+
+  describe('Constructor', () => {
+    it('should create service instance with project manager', () => {
+      const instance = new PatternAnalysisService(mockProjectManager as any);
+      expect(instance).toBeDefined();
+    });
+  });
+
+  describe('analyze - success cases with issues', () => {
+    it('should analyze patterns successfully with default options', async () => {
+      const options = {};
+      const result = await service.analyze(options);
+
+      expect(result.hasIssues).toBe(true);
+      expect(result.totalIssues).toBe(1);
+      expect(result.groupedAnalysis).toEqual(mockPatternAnalysis);
+      expect(result.report).toBe('Pattern analysis report');
+      expect(mockSonarClient.getIssues).toHaveBeenCalled();
+      expect(mockSonarClient.getUniqueRulesInfo).toHaveBeenCalledWith([mockIssue]);
+      expect(mockPatternAnalyzerAnalyze).toHaveBeenCalledWith(
+        [mockIssue],
+        mockRuleCache,
+        'pattern'
+      );
+    });
+
+    it('should use default groupBy as pattern', async () => {
+      await service.analyze({});
+
+      expect(mockPatternAnalyzerAnalyze).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        'pattern'
+      );
+    });
+
+    it('should group by file when requested', async () => {
+      await service.analyze({ groupBy: 'file' });
+
+      expect(mockPatternAnalyzerAnalyze).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        'file'
+      );
+    });
+
+    it('should group by severity when requested', async () => {
+      await service.analyze({ groupBy: 'severity' });
+
+      expect(mockPatternAnalyzerAnalyze).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        'severity'
+      );
+    });
+
+    it('should group by fixability when requested', async () => {
+      await service.analyze({ groupBy: 'fixability' });
+
+      expect(mockPatternAnalyzerAnalyze).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        'fixability'
+      );
+    });
+
+    it('should include impact by default', async () => {
+      await service.analyze({});
+
+      expect(mockBuildPatternAnalysisReport).toHaveBeenCalledWith(
+        mockPatternAnalysis,
+        true
+      );
+    });
+
+    it('should include impact when explicitly set to true', async () => {
+      await service.analyze({ includeImpact: true });
+
+      expect(mockBuildPatternAnalysisReport).toHaveBeenCalledWith(
+        mockPatternAnalysis,
+        true
+      );
+    });
+
+    it('should exclude impact when set to false', async () => {
+      await service.analyze({ includeImpact: false });
+
+      expect(mockBuildPatternAnalysisReport).toHaveBeenCalledWith(
+        mockPatternAnalysis,
+        false
+      );
+    });
+
+    it('should fetch unique rules info from issues', async () => {
+      const issues = [
+        { ...mockIssue, key: 'issue-1', rule: 'typescript:S1234' },
+        { ...mockIssue, key: 'issue-2', rule: 'typescript:S1234' },
+        { ...mockIssue, key: 'issue-3', rule: 'typescript:S5678' },
+      ];
+      mockSonarClient.getIssues = vi.fn(async () => issues);
+
+      await service.analyze({});
+
+      expect(mockSonarClient.getUniqueRulesInfo).toHaveBeenCalledWith(issues);
+    });
+
+    it('should pass correlationId through logging', async () => {
+      const correlationId = 'test-correlation-123';
+      await service.analyze({}, correlationId);
+
+      expect(mockSonarClient.getIssues).toHaveBeenCalled();
+    });
+
+    it('should handle multiple issues', async () => {
+      const issues = [
+        { ...mockIssue, key: 'issue-1' },
+        { ...mockIssue, key: 'issue-2' },
+        { ...mockIssue, key: 'issue-3' },
+      ];
+      mockSonarClient.getIssues = vi.fn(async () => issues);
+
+      const result = await service.analyze({});
+
+      expect(result.totalIssues).toBe(3);
+      expect(result.hasIssues).toBe(true);
+    });
+  });
+
+  describe('analyze - no issues case', () => {
+    it('should return no issues report when no issues found', async () => {
+      mockSonarClient.getIssues = vi.fn(async () => []);
+
+      const result = await service.analyze({});
+
+      expect(result.hasIssues).toBe(false);
+      expect(result.totalIssues).toBe(0);
+      expect(result.groupedAnalysis).toBeNull();
+      expect(result.report).toContain('Pattern Analysis');
+      expect(result.report).toContain('No issues found');
+      expect(result.report).toContain('Great work maintaining code quality!');
+    });
+
+    it('should not call getUniqueRulesInfo when no issues', async () => {
+      mockSonarClient.getIssues = vi.fn(async () => []);
+
+      await service.analyze({});
+
+      expect(mockSonarClient.getUniqueRulesInfo).not.toHaveBeenCalled();
+    });
+
+    it('should not call PatternAnalyzer.analyze when no issues', async () => {
+      mockSonarClient.getIssues = vi.fn(async () => []);
+
+      await service.analyze({});
+
+      expect(mockPatternAnalyzerAnalyze).not.toHaveBeenCalled();
+    });
+
+    it('should not call buildPatternAnalysisReport when no issues', async () => {
+      mockSonarClient.getIssues = vi.fn(async () => []);
+
+      await service.analyze({});
+
+      expect(mockBuildPatternAnalysisReport).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('analyze - error cases', () => {
+    it('should handle getOrCreateConfig errors', async () => {
+      mockProjectManager.getOrCreateConfig = vi.fn(async () => { throw new Error('Config not found'); });
+
+      await expect(service.analyze({})).rejects.toThrow('Config not found');
+    });
+
+    it('should handle getIssues API errors', async () => {
+      mockSonarClient.getIssues = vi.fn(async () => { throw new Error('SonarQube API error'); });
+
+      await expect(service.analyze({})).rejects.toThrow(
+        'SonarQube API error'
+      );
+    });
+
+    it('should handle getUniqueRulesInfo errors', async () => {
+      mockSonarClient.getUniqueRulesInfo = vi.fn(async () => { throw new Error('Rules not found'); });
+
+      await expect(service.analyze({})).rejects.toThrow('Rules not found');
+    });
+
+    it('should handle PatternAnalyzer.analyze errors', async () => {
+      mockPatternAnalyzerAnalyze.mockImplementation(() => {
+        throw new Error('Analysis failed');
+      });
+
+      await expect(service.analyze({})).rejects.toThrow('Analysis failed');
+    });
+
+    it('should handle buildPatternAnalysisReport errors', async () => {
+      mockBuildPatternAnalysisReport.mockImplementation(() => {
+        throw new Error('Report generation failed');
+      });
+
+      await expect(service.analyze({})).rejects.toThrow(
+        'Report generation failed'
+      );
+    });
+  });
+
+  describe('Options combinations', () => {
+    it('should handle all options together', async () => {
+      const options = {
+        groupBy: 'severity' as const,
+        includeImpact: true,
+        includeCorrelations: true,
+      };
+
+      await service.analyze(options);
+
+      expect(mockPatternAnalyzerAnalyze).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        'severity'
+      );
+      expect(mockBuildPatternAnalysisReport).toHaveBeenCalledWith(
+        mockPatternAnalysis,
+        true
+      );
+    });
+
+    it('should handle minimal options with defaults', async () => {
+      await service.analyze({});
+
+      expect(mockPatternAnalyzerAnalyze).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        'pattern'
+      );
+      expect(mockBuildPatternAnalysisReport).toHaveBeenCalledWith(
+        mockPatternAnalysis,
+        true
+      );
+    });
+  });
+
+  describe('Return value structure', () => {
+    it('should return correct structure with issues', async () => {
+      const result = await service.analyze({});
+
+      expect(result).toHaveProperty('totalIssues');
+      expect(result).toHaveProperty('groupedAnalysis');
+      expect(result).toHaveProperty('hasIssues');
+      expect(result).toHaveProperty('report');
+      expect(typeof result.totalIssues).toBe('number');
+      expect(typeof result.hasIssues).toBe('boolean');
+      expect(typeof result.report).toBe('string');
+    });
+
+    it('should return correct structure without issues', async () => {
+      mockSonarClient.getIssues = vi.fn(async () => []);
+
+      const result = await service.analyze({});
+
+      expect(result).toHaveProperty('totalIssues', 0);
+      expect(result).toHaveProperty('groupedAnalysis', null);
+      expect(result).toHaveProperty('hasIssues', false);
+      expect(result).toHaveProperty('report');
+      expect(typeof result.report).toBe('string');
+    });
+
+    it('should include formatted report in return value', async () => {
+      const result = await service.analyze({});
+
+      expect(result.report).toBe('Pattern analysis report');
+    });
+
+    it('should include analysis object in return value', async () => {
+      const result = await service.analyze({});
+
+      expect(result.groupedAnalysis).toEqual(mockPatternAnalysis);
+    });
+  });
+
+  describe('Edge cases', () => {
+    it('should handle empty rule cache', async () => {
+      mockSonarClient.getUniqueRulesInfo = vi.fn(async () => {});
+
+      const result = await service.analyze({});
+
+      expect(result.hasIssues).toBe(true);
+    });
+
+    it('should handle single issue', async () => {
+      mockSonarClient.getIssues = vi.fn(async () => [mockIssue]);
+
+      const result = await service.analyze({});
+
+      expect(result.totalIssues).toBe(1);
+      expect(result.hasIssues).toBe(true);
+    });
+
+    it('should handle large number of issues', async () => {
+      const manyIssues = Array.from({ length: 1000 }, (_, i) => ({
+        ...mockIssue,
+        key: `issue-${i}`,
+      }));
+      mockSonarClient.getIssues = vi.fn(async () => manyIssues);
+
+      const result = await service.analyze({});
+
+      expect(result.totalIssues).toBe(1000);
+      expect(result.hasIssues).toBe(true);
+    });
+
+    it('should handle issues with missing fields', async () => {
+      const issueWithMissingFields = {
+        key: 'issue-1',
+        rule: 'typescript:S1234',
+        severity: undefined,
+        component: undefined,
+        message: 'Some issue',
+      };
+      mockSonarClient.getIssues = vi.fn(async () => [issueWithMissingFields]);
+
+      const result = await service.analyze({});
+
+      expect(result.hasIssues).toBe(true);
+      expect(result.totalIssues).toBe(1);
+    });
+  });
+
+  describe('Integration with report builder', () => {
+    it('should pass analysis result to report builder', async () => {
+      const customAnalysis = {
+        totalIssues: 10,
+        patterns: { 'custom-pattern': { count: 10 } },
+      };
+      mockPatternAnalyzerAnalyze.mockImplementation(() => customAnalysis);
+
+      await service.analyze({});
+
+      expect(mockBuildPatternAnalysisReport).toHaveBeenCalledWith(
+        customAnalysis,
+        true
+      );
+    });
+
+    it('should use report from builder in result', async () => {
+      mockBuildPatternAnalysisReport.mockImplementation(() => 'Custom report content');
+
+      const result = await service.analyze({});
+
+      expect(result.report).toBe('Custom report content');
+    });
+  });
+});

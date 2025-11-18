@@ -1,0 +1,12 @@
+[
+  {
+    "directory": "/home/user/project/build",
+    "command": "/usr/bin/c++ -I/home/user/project/include -std=c++17 -o CMakeFiles/test_app.dir/src/main.cpp.o -c /home/user/project/src/main.cpp",
+    "file": "/home/user/project/src/main.cpp"
+  },
+  {
+    "directory": "/home/user/project/build",
+    "command": "/usr/bin/c++ -I/home/user/project/include -std=c++17 -o CMakeFiles/test_app.dir/src/calculator.cpp.o -c /home/user/project/src/calculator.cpp",
+    "file": "/home/user/project/src/calculator.cpp"
+  }
+]

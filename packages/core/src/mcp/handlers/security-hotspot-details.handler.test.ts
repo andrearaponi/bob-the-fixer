@@ -1,0 +1,188 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { handleGetSecurityHotspotDetails } from './security-hotspot-details.handler';
+
+// Mock all dependencies
+vi.mock('../../core/analysis/index.js');
+vi.mock('../../universal/project-manager');
+vi.mock('../../shared/validators/mcp-schemas');
+
+describe('handleGetSecurityHotspotDetails', () => {
+  let mockSecurityAnalyzer: any;
+  let mockProjectManager: any;
+  let mockValidateInput: any;
+
+  beforeEach(async () => {
+    // Mock validateInput
+    const validators = await import('../../shared/validators/mcp-schemas');
+    mockValidateInput = vi.mocked(validators.validateInput);
+    mockValidateInput.mockImplementation(() => ({
+      hotspotKey: 'HS123',
+      includeRuleDetails: true,
+      includeFilePath: true
+    }));
+
+    // Mock ProjectManager
+    const projectManagerModule = await import('../../universal/project-manager');
+    mockProjectManager = {};
+    vi.mocked(projectManagerModule.ProjectManager).mockImplementation(function() { return mockProjectManager; });
+
+    // Mock SecurityAnalyzer
+    const analysisModule = await import('../../core/analysis/index.js');
+    mockSecurityAnalyzer = {
+      getHotspotDetails: vi.fn(async () =>
+        'SECURITY HOTSPOT DETAILS\n\nKey: HS123\nSeverity: HIGH\nCategory: SQL Injection'
+      )
+    };
+    vi.mocked(analysisModule.SecurityAnalyzer).mockImplementation(function() { return mockSecurityAnalyzer; });
+  });
+
+  describe('Success cases', () => {
+    it('should validate input and call SecurityAnalyzer', async () => {
+      const args = {
+        hotspotKey: 'HS123',
+        includeRuleDetails: true,
+        includeFilePath: true
+      };
+
+      const result = await handleGetSecurityHotspotDetails(args);
+
+      expect(mockValidateInput).toHaveBeenCalledWith(
+        expect.anything(),
+        args,
+        'sonar_get_security_hotspot_details'
+      );
+      expect(mockSecurityAnalyzer.getHotspotDetails).toHaveBeenCalledWith(
+        {
+          hotspotKey: 'HS123',
+          includeRuleDetails: true,
+          includeFilePath: true
+        },
+        undefined
+      );
+      expect(result).toHaveProperty('content');
+      expect(result.content[0].type).toBe('text');
+    });
+
+    it('should pass correlation ID through', async () => {
+      const correlationId = 'test-corr-123';
+      await handleGetSecurityHotspotDetails({}, correlationId);
+
+      expect(mockSecurityAnalyzer.getHotspotDetails).toHaveBeenCalledWith(
+        expect.anything(),
+        correlationId
+      );
+    });
+
+    it('should return hotspot details report', async () => {
+      const result = await handleGetSecurityHotspotDetails({});
+
+      expect(result.content[0].text).toContain('SECURITY HOTSPOT DETAILS');
+      expect(result.content[0].text).toContain('HS123');
+    });
+
+    it('should handle includeRuleDetails true', async () => {
+      mockValidateInput.mockImplementation(() => ({
+        hotspotKey: 'HS123',
+        includeRuleDetails: true
+      }));
+
+      await handleGetSecurityHotspotDetails({});
+
+      expect(mockSecurityAnalyzer.getHotspotDetails).toHaveBeenCalledWith(
+        expect.objectContaining({
+          includeRuleDetails: true
+        }),
+        undefined
+      );
+    });
+
+    it('should handle includeRuleDetails false', async () => {
+      mockValidateInput.mockImplementation(() => ({
+        hotspotKey: 'HS123',
+        includeRuleDetails: false
+      }));
+
+      await handleGetSecurityHotspotDetails({});
+
+      expect(mockSecurityAnalyzer.getHotspotDetails).toHaveBeenCalledWith(
+        expect.objectContaining({
+          includeRuleDetails: false
+        }),
+        undefined
+      );
+    });
+
+    it('should handle includeFilePath true', async () => {
+      mockValidateInput.mockImplementation(() => ({
+        hotspotKey: 'HS123',
+        includeFilePath: true
+      }));
+
+      await handleGetSecurityHotspotDetails({});
+
+      expect(mockSecurityAnalyzer.getHotspotDetails).toHaveBeenCalledWith(
+        expect.objectContaining({
+          includeFilePath: true
+        }),
+        undefined
+      );
+    });
+
+    it('should handle includeFilePath false', async () => {
+      mockValidateInput.mockImplementation(() => ({
+        hotspotKey: 'HS123',
+        includeFilePath: false
+      }));
+
+      await handleGetSecurityHotspotDetails({});
+
+      expect(mockSecurityAnalyzer.getHotspotDetails).toHaveBeenCalledWith(
+        expect.objectContaining({
+          includeFilePath: false
+        }),
+        undefined
+      );
+    });
+
+    it('should handle different hotspot keys', async () => {
+      mockValidateInput.mockImplementation(() => ({
+        hotspotKey: 'HS999'
+      }));
+
+      await handleGetSecurityHotspotDetails({});
+
+      expect(mockSecurityAnalyzer.getHotspotDetails).toHaveBeenCalledWith(
+        expect.objectContaining({
+          hotspotKey: 'HS999'
+        }),
+        undefined
+      );
+    });
+  });
+
+  describe('Error handling', () => {
+    it('should propagate validation errors', async () => {
+      mockValidateInput.mockImplementation(function() {
+        throw new Error('Invalid hotspot key');
+      });
+
+      await expect(handleGetSecurityHotspotDetails({})).rejects.toThrow('Invalid hotspot key');
+    });
+
+    it('should propagate analyzer errors', async () => {
+      mockSecurityAnalyzer.getHotspotDetails = vi.fn(async () => {
+        throw new Error('Hotspot not found');
+      });
+
+      await expect(handleGetSecurityHotspotDetails({})).rejects.toThrow('Hotspot not found');
+    });
+
+    it('should propagate API errors', async () => {
+      mockSecurityAnalyzer.getHotspotDetails = vi.fn(async () => {
+        throw new Error('SonarQube API error');
+      });
+
+      await expect(handleGetSecurityHotspotDetails({})).rejects.toThrow('SonarQube API error');
+    });
+  });
+});

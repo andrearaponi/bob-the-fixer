@@ -1,0 +1,80 @@
+version: '3.8'
+
+# Claude Bob the Fixer - Development Environment
+# Production deployment guide: docs/DEPLOYMENT.md
+
+services:
+  postgres:
+    image: docker.io/library/postgres:15-alpine
+    container_name: bobthefixer_postgres
+    environment:
+      POSTGRES_USER: sonarqube
+      POSTGRES_PASSWORD: sonarqube
+      POSTGRES_DB: sonarqube
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - bobthefixer
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sonarqube -d sonarqube"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  sonarqube:
+    # Pin to specific version to ensure API compatibility with MCP server
+    # Version 25.9.0.112764 tested with current metrics API calls
+    # (removed maintainability_rating, technical_debt from default metrics)
+    # Using SHA hash of current working image to prevent breaking changes
+    image: docker.io/library/sonarqube@sha256:7106d77329a6fdac1a0daa8fc797da4f790f88f7cb796cc6b09375e7c889203b
+    container_name: bobthefixer_sonarqube
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "9000:9000"
+    environment:
+      SONAR_JDBC_URL: jdbc:postgresql://postgres:5432/sonarqube
+      SONAR_JDBC_USERNAME: sonarqube
+      SONAR_JDBC_PASSWORD: sonarqube
+      SONAR_ES_BOOTSTRAP_CHECKS_DISABLE: true
+      SONAR_WEB_JAVAADDITIONALOPS: "-Xms1g -Xmx3g"
+    volumes:
+      - sonarqube_data:/opt/sonarqube/data
+      - sonarqube_extensions:/opt/sonarqube/extensions
+      - sonarqube_logs:/opt/sonarqube/logs
+    networks:
+      - bobthefixer
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/api/system/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 120s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+          cpus: '2.0'
+
+volumes:
+  postgres_data:
+    driver: local
+    name: bobthefixer_postgres_data
+  sonarqube_data:
+    driver: local
+    name: bobthefixer_sonarqube_data
+  sonarqube_extensions:
+    driver: local
+    name: bobthefixer_sonarqube_extensions
+  sonarqube_logs:
+    driver: local
+    name: bobthefixer_sonarqube_logs
+
+networks:
+  bobthefixer:
+    driver: bridge
+    name: bobthefixer_network

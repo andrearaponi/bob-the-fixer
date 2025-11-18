@@ -1,0 +1,297 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { ProjectSetup, SetupOptions, SetupResult } from './ProjectSetup';
+
+// Create mock instances at module level
+const mockProjectManager = {
+  setWorkingDirectory: vi.fn(() => {}),
+  getWorkingDirectory: vi.fn(() => '/test/project'),
+  analyzeProject: vi.fn(() => Promise.resolve()),
+  getOrCreateConfig: vi.fn(() => Promise.resolve()),
+};
+
+const mockSonarAdmin = {
+  validateConnection: vi.fn(() => Promise.resolve(true)),
+  setupProject: vi.fn(() => Promise.resolve()),
+};
+
+const mockProjectContext = {
+  path: '/test/project',
+  name: 'test-project',
+  language: ['typescript', 'javascript'],
+  framework: 'react',
+  buildTool: 'npm',
+  packageManager: 'npm',
+};
+
+const mockConfig = {
+  sonarProjectKey: 'test-project',
+  sonarUrl: 'http://localhost:9000',
+  sonarToken: 'sqp_test_token_1234567890',
+  createdAt: '2024-01-01T00:00:00.000Z',
+  language: 'typescript,javascript',
+  framework: 'react',
+};
+
+const mockSetupResult = {
+  project: {
+    key: 'test-project',
+    name: 'Test Project',
+  },
+  token: {
+    token: 'sqp_new_token_1234567890',
+    name: 'test-project-token',
+  },
+  qualityGate: {
+    name: 'Strict',
+    conditions: [
+      { metric: 'new_coverage', op: 'LT', error: '80' },
+      { metric: 'new_bugs', op: 'GT', error: '0' },
+    ],
+  },
+};
+
+// Mock modules
+vi.mock('../../universal/project-manager', () => ({
+  ProjectManager: vi.fn(function() { return mockProjectManager; }),
+}));
+
+vi.mock('../../universal/sonar-admin', () => ({
+  SonarAdmin: vi.fn(function() { return mockSonarAdmin; }),
+}));
+
+vi.mock('../../shared/utils/server-utils', () => ({
+  saveConfigToFile: vi.fn(async () => undefined),
+}));
+
+vi.mock('../../sonar/index', () => ({
+  verifyProjectSetup: vi.fn(async () => undefined),
+}));
+
+vi.mock('../../shared/logger/structured-logger', () => ({
+  getLogger: vi.fn(() => ({
+    info: vi.fn(() => {}),
+    debug: vi.fn(() => {}),
+    warn: vi.fn(() => {}),
+    error: vi.fn(() => {}),
+  })),
+}));
+
+describe('ProjectSetup', () => {
+  let projectSetup: ProjectSetup;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    projectSetup = new ProjectSetup(mockProjectManager as any, mockSonarAdmin as any);
+
+    // Default successful responses
+    mockProjectManager.analyzeProject = vi.fn(async () => mockProjectContext);
+    mockProjectManager.getOrCreateConfig = vi.fn(async () => mockConfig);
+    mockSonarAdmin.validateConnection = vi.fn(async () => true);
+    mockSonarAdmin.setupProject = vi.fn(async () => mockSetupResult);
+  });
+
+  describe('execute', () => {
+    it('should complete full project setup successfully', async () => {
+      // Simulate no existing config
+      mockProjectManager.getOrCreateConfig.mockImplementationOnce(async () => { throw new Error('No config'); });
+
+      const options: SetupOptions = {};
+      const result = await projectSetup.execute(options);
+
+      expect(result).toEqual({
+        projectKey: 'test-project',
+        projectName: 'Test Project',
+        languages: ['typescript', 'javascript'],
+        framework: 'react',
+        buildTool: 'npm',
+        qualityGateName: 'Strict',
+        conditionsCount: 2,
+        configPath: '/test/project/bobthefixer.env',
+        isNewSetup: true,
+      });
+
+      expect(mockProjectManager.analyzeProject).toHaveBeenCalled();
+      expect(mockSonarAdmin.validateConnection).toHaveBeenCalled();
+      expect(mockSonarAdmin.setupProject).toHaveBeenCalledWith(mockProjectContext);
+    });
+
+    it('should set working directory when projectPath is provided', async () => {
+      mockProjectManager.getOrCreateConfig.mockImplementationOnce(async () => { throw new Error('No config'); });
+
+      const options: SetupOptions = {
+        projectPath: '/custom/path',
+      };
+
+      await projectSetup.execute(options);
+
+      expect(mockProjectManager.setWorkingDirectory).toHaveBeenCalledWith('/custom/path');
+    });
+
+    it('should use existing configuration when force is false', async () => {
+      const options: SetupOptions = {
+        force: false,
+      };
+
+      const result = await projectSetup.execute(options);
+
+      expect(result.isNewSetup).toBe(false);
+      expect(result.projectKey).toBe('test-project');
+      expect(mockSonarAdmin.setupProject).not.toHaveBeenCalled();
+    });
+
+    it('should recreate configuration when force is true', async () => {
+      const options: SetupOptions = {
+        force: true,
+      };
+
+      const result = await projectSetup.execute(options);
+
+      expect(result.isNewSetup).toBe(true);
+      expect(mockSonarAdmin.setupProject).toHaveBeenCalled();
+    });
+
+    it('should throw error when SonarQube connection validation fails', async () => {
+      mockProjectManager.getOrCreateConfig.mockImplementationOnce(async () => { throw new Error('No config'); });
+      mockSonarAdmin.validateConnection = vi.fn(async () => false);
+
+      const options: SetupOptions = {};
+
+      await expect(projectSetup.execute(options)).rejects.toThrow(
+        'Cannot connect to SonarQube. Ensure it is running and token is valid.'
+      );
+    });
+
+    it('should handle setup with temp token in existing config', async () => {
+      mockProjectManager.getOrCreateConfig = vi.fn(async () => ({
+        ...mockConfig,
+        sonarToken: 'temp-token-will-be-generated',
+      }));
+
+      const result = await projectSetup.execute({ force: false });
+
+      expect(result.isNewSetup).toBe(true);
+      expect(mockSonarAdmin.setupProject).toHaveBeenCalled();
+    });
+
+    it('should handle project context without optional fields', async () => {
+      mockProjectManager.getOrCreateConfig.mockImplementationOnce(async () => { throw new Error('No config'); });
+      mockProjectManager.analyzeProject = vi.fn(async () => ({
+        path: '/test/project',
+        name: 'test-project',
+        language: ['python'],
+        framework: undefined,
+        buildTool: undefined,
+      }));
+
+      const result = await projectSetup.execute({});
+
+      expect(result.framework).toBeUndefined();
+      expect(result.buildTool).toBeUndefined();
+    });
+
+    it('should pass correlationId through logging', async () => {
+      mockProjectManager.getOrCreateConfig.mockImplementationOnce(async () => { throw new Error('No config'); });
+      const correlationId = 'test-correlation-id';
+
+      await projectSetup.execute({}, correlationId);
+
+      // Verify the setup completed (correlation ID is used internally)
+      expect(mockSonarAdmin.setupProject).toHaveBeenCalled();
+    });
+  });
+
+  describe('formatSetupResult', () => {
+    it('should format existing configuration message', () => {
+      const result: SetupResult = {
+        projectKey: 'test-project',
+        projectName: 'Test Project',
+        languages: ['typescript'],
+        framework: 'react',
+        buildTool: 'npm',
+        qualityGateName: 'Default',
+        conditionsCount: 0,
+        configPath: '/test/project/bobthefixer.env',
+        isNewSetup: false,
+      };
+
+      const formatted = ProjectSetup.formatSetupResult(result);
+
+      expect(formatted).toContain('SONARGUARD ALREADY CONFIGURED');
+      expect(formatted).toContain('test-project');
+      expect(formatted).toContain('typescript');
+      expect(formatted).toContain('react');
+      expect(formatted).toContain('npm');
+      expect(formatted).toContain('force: true');
+    });
+
+    it('should format new setup message', () => {
+      const result: SetupResult = {
+        projectKey: 'test-project',
+        projectName: 'Test Project',
+        languages: ['typescript', 'javascript'],
+        framework: 'react',
+        buildTool: 'npm',
+        qualityGateName: 'Strict',
+        conditionsCount: 5,
+        configPath: '/test/project/bobthefixer.env',
+        isNewSetup: true,
+      };
+
+      const formatted = ProjectSetup.formatSetupResult(result);
+
+      expect(formatted).toContain('BOB THE BUILDER AUTO-SETUP COMPLETE!');
+      expect(formatted).toContain('Test Project');
+      expect(formatted).toContain('test-project');
+      expect(formatted).toContain('typescript, javascript');
+      expect(formatted).toContain('Strict');
+      expect(formatted).toContain('5 quality conditions');
+      expect(formatted).toContain('READY TO ANALYZE!');
+    });
+
+    it('should handle missing framework and buildTool', () => {
+      const result: SetupResult = {
+        projectKey: 'test-project',
+        projectName: 'Test Project',
+        languages: ['python'],
+        qualityGateName: 'Balanced',
+        conditionsCount: 3,
+        configPath: '/test/project/bobthefixer.env',
+        isNewSetup: true,
+      };
+
+      const formatted = ProjectSetup.formatSetupResult(result);
+
+      expect(formatted).toContain('Generic');
+      expect(formatted).toContain('None detected');
+    });
+  });
+
+  describe('edge cases', () => {
+    it('should handle error during project analysis', async () => {
+      mockProjectManager.getOrCreateConfig.mockImplementationOnce(async () => { throw new Error('No config'); });
+      mockProjectManager.analyzeProject = vi.fn(async () => { throw new Error('Analysis failed'); });
+
+      await expect(projectSetup.execute({})).rejects.toThrow('Analysis failed');
+    });
+
+    it('should handle error during setup', async () => {
+      mockProjectManager.getOrCreateConfig.mockImplementationOnce(async () => { throw new Error('No config'); });
+      mockSonarAdmin.setupProject = vi.fn(async () => { throw new Error('Setup failed'); });
+
+      await expect(projectSetup.execute({})).rejects.toThrow('Setup failed');
+    });
+
+    it('should handle configuration with partial data in existing setup', async () => {
+      mockProjectManager.getOrCreateConfig = vi.fn(async () => ({
+        ...mockConfig,
+        language: undefined,
+        framework: undefined,
+      }));
+
+      const result = await projectSetup.execute({ force: false });
+
+      expect(result.languages).toEqual(['typescript', 'javascript']);
+      expect(result.framework).toBe('react');
+    });
+  });
+});

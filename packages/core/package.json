@@ -1,0 +1,53 @@
+{
+  "name": "@bob-the-fixer/core",
+  "version": "0.1.0-beta",
+  "description": "Enterprise-grade MCP Server - SonarQube integration with advanced security for AI assistants",
+  "main": "dist/universal-mcp-server.js",
+  "types": "dist/universal-mcp-server.d.ts",
+  "bin": {
+    "bob-the-fixer-mcp": "./dist/universal-mcp-server.js",
+    "bob-the-fixer-http": "./dist/universal-mcp-server-http.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/universal-mcp-server.ts",
+    "start": "node dist/universal-mcp-server.js",
+    "clean": "rm -rf dist",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:ui": "vitest --ui"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.10.0",
+    "axios": "^1.7.2",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.2.1",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.5",
+    "@types/node": "^24.10.0",
+    "@types/supertest": "^6.0.3",
+    "@vitest/coverage-v8": "^4.0.8",
+    "@vitest/ui": "^4.0.8",
+    "supertest": "^7.1.4",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^4.0.8"
+  },
+  "keywords": [
+    "sonarqube",
+    "mcp-server",
+    "model-context-protocol",
+    "ai-assistant",
+    "code-quality",
+    "security",
+    "code-analysis",
+    "enterprise",
+    "production-ready"
+  ]
+}
