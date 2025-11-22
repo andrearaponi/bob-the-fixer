@@ -97,6 +97,30 @@ describe('Java Maven Libraries Resolution', () => {
         expect(librariesParam).not.toContain('[ERROR]');
       }
     });
+
+    it('should filter out Maven download progress messages from classpath', async () => {
+      // Arrange
+      const params: string[] = [];
+      const addMavenLibraries = (client as any).addMavenLibraries.bind(client);
+
+      // Act
+      await addMavenLibraries(params, fixtureDir);
+
+      // Assert
+      const librariesParam = params.find(p => p.startsWith('-Dsonar.java.libraries='));
+
+      if (librariesParam) {
+        // Should not contain download progress messages
+        expect(librariesParam).not.toContain('Downloading from');
+        expect(librariesParam).not.toContain('Downloaded from');
+        expect(librariesParam).not.toContain('Progress (');
+        expect(librariesParam).not.toContain('repo.maven.apache.org');
+        expect(librariesParam).not.toContain('://');
+        expect(librariesParam).not.toContain('central:');
+        // Should not contain download speed indicators
+        expect(librariesParam).not.toMatch(/\d+\s*(kB|MB|B)\s*(at|\/s)/i);
+      }
+    });
   });
 
   describe('Maven integration test', () => {

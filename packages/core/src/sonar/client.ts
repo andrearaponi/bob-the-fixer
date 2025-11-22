@@ -1534,16 +1534,55 @@ export class SonarQubeClient {
       );
 
       // Parse the classpath output
-      // Maven outputs the classpath mixed with [INFO] lines
+      // Maven outputs the classpath mixed with [INFO] lines and download progress
       // We need to filter out Maven's logging and extract only the classpath
+      //
+      // IMPORTANT: When dependencies are downloaded for the first time, Maven outputs
+      // progress messages like "Downloading from central: ...", "Downloaded from central: ...",
+      // "Progress (1),...", etc. These must be filtered out or they corrupt the classpath.
       const lines = stdout.split('\n');
-      const classpathLines = lines.filter(line =>
-        line.trim().length > 0 &&
-        !line.includes('[INFO]') &&
-        !line.includes('[WARNING]') &&
-        !line.includes('[ERROR]') &&
-        line.includes('/') // Classpath contains paths with /
-      );
+      const classpathLines = lines.filter(line => {
+        const trimmed = line.trim();
+        if (trimmed.length === 0) return false;
+
+        // Filter out Maven log lines
+        if (trimmed.includes('[INFO]')) return false;
+        if (trimmed.includes('[WARNING]')) return false;
+        if (trimmed.includes('[ERROR]')) return false;
+
+        // Filter out Maven download progress messages (critical for first-time dependency downloads)
+        if (trimmed.startsWith('Downloading from ')) return false;
+        if (trimmed.startsWith('Downloaded from ')) return false;
+        if (trimmed.startsWith('Progress ')) return false;
+        if (trimmed.includes('Downloading from ')) return false;
+        if (trimmed.includes('Downloaded from ')) return false;
+
+        // Filter out lines with URL patterns (http://, https://, repo.maven.apache.org)
+        if (trimmed.includes('://')) return false;
+        if (trimmed.includes('repo.maven.apache.org')) return false;
+        if (trimmed.includes('central:')) return false;
+
+        // Filter out lines with download speed/progress indicators
+        if (/\d+\s*(kB|MB|B)\s*(at|\/s)/i.test(trimmed)) return false;
+        if (/\(\d+\s*(kB|MB|B)\s*(at|\/s)/i.test(trimmed)) return false;
+
+        // Classpath must contain valid file paths with /
+        if (!trimmed.includes('/')) return false;
+
+        // Valid classpath lines should start with a path (absolute path starting with /)
+        // or be a continuation of paths separated by : (Unix) or ; (Windows)
+        // Check that the line looks like valid file paths
+        const pathParts = trimmed.split(/[:;]/);
+        const hasValidPaths = pathParts.some(part => {
+          const p = part.trim();
+          // Valid path should start with / (Unix) or drive letter (Windows)
+          // and should end with .jar or be a directory
+          return (p.startsWith('/') || /^[A-Za-z]:/.test(p)) &&
+                 (p.endsWith('.jar') || p.includes('.m2/repository') || p.includes('target/'));
+        });
+
+        return hasValidPaths;
+      });
 
       if (classpathLines.length === 0) {
         console.error('⚠️  No Maven dependencies found in classpath output');
