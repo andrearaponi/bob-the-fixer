@@ -17,14 +17,17 @@ const mockSonarAdmin = {
 
 const mockSonarClient = {
   triggerAnalysis: vi.fn(() => Promise.resolve()),
+  triggerDotnetAnalysis: vi.fn(() => Promise.resolve()),
   waitForAnalysis: vi.fn(() => Promise.resolve()),
   getIssues: vi.fn(() => Promise.resolve([])),
+  getSecurityHotspots: vi.fn(async () => []),
+  getProjectMetrics: vi.fn(async () => ({})),
 };
 
 const mockProjectContext = {
   path: '/test/project',
   name: 'test-project',
-  languages: ['typescript'],
+  language: ['typescript'],
   frameworks: ['node'],
   testFrameworks: [],
   buildTools: ['npm'],
@@ -49,14 +52,25 @@ vi.mock('../../universal/sonar-admin', () => ({
 }));
 
 vi.mock('../../sonar/client', () => ({
-  SonarQubeClient: vi.fn(function() { return mockSonarClient; }),
+  SonarQubeClient: vi.fn(function(url, token, key, context) {
+    return {
+      ...mockSonarClient,
+      projectContext: context,
+    };
+  }),
 }));
 
 vi.mock('../../sonar/index', () => ({
-  SonarQubeClient: vi.fn(function() { return mockSonarClient; }),
+  SonarQubeClient: vi.fn(function(url, token, key, context) {
+    return {
+      ...mockSonarClient,
+      projectContext: context,
+    };
+  }),
   verifyProjectSetup: vi.fn(async () => undefined),
   waitForCacheRefresh: vi.fn(async () => undefined),
 }));
+
 
 vi.mock('fs/promises', () => ({
   default: {
@@ -108,6 +122,7 @@ describe('ScanOrchestrator', () => {
     vi.mocked(mockSonarAdmin.createProject).mockClear();
     vi.mocked(mockSonarAdmin.generateToken).mockClear();
     vi.mocked(mockSonarClient.triggerAnalysis).mockClear();
+    vi.mocked(mockSonarClient.triggerDotnetAnalysis).mockClear();
     vi.mocked(mockSonarClient.waitForAnalysis).mockClear();
     vi.mocked(mockSonarClient.getIssues).mockClear();
 
@@ -115,6 +130,7 @@ describe('ScanOrchestrator', () => {
     mockProjectManager.analyzeProject = vi.fn(async () => mockProjectContext);
     mockProjectManager.getOrCreateConfig = vi.fn(async () => mockConfig);
     mockSonarClient.triggerAnalysis = vi.fn(async () => undefined);
+    mockSonarClient.triggerDotnetAnalysis = vi.fn(async () => undefined);
     mockSonarClient.waitForAnalysis = vi.fn(async () => undefined);
     mockSonarClient.getIssues = vi.fn(async () => [mockIssue]);
     mockSonarAdmin.createProject = vi.fn(async () => undefined);
@@ -202,6 +218,24 @@ describe('ScanOrchestrator', () => {
 
       expect(result.totalIssues).toBe(0);
       expect(result.topIssues).toEqual([]);
+    });
+  });
+
+  describe('.NET project', () => {
+    it('should call triggerDotnetAnalysis for dotnet projects', async () => {
+        const mockDotnetProjectContext = {
+            path: '/test/project',
+            name: 'test-dotnet-project',
+            language: ['csharp'],
+            buildTool: 'dotnet',
+        };
+
+        mockProjectManager.analyzeProject = vi.fn(async () => mockDotnetProjectContext);
+        
+        await orchestrator.execute({ autoSetup: false });
+
+        expect(mockSonarClient.triggerDotnetAnalysis).toHaveBeenCalled();
+        expect(mockSonarClient.triggerAnalysis).not.toHaveBeenCalled();
     });
   });
 

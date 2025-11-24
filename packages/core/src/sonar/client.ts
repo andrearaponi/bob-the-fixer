@@ -12,7 +12,7 @@ const execAsync = promisify(exec);
 export class SonarQubeClient {
   public readonly client: AxiosInstance;  // Make public for diagnostic access
   private readonly projectKey: string;
-  private readonly projectContext?: ProjectContext;
+  public readonly projectContext?: ProjectContext;
 
   constructor(
     baseUrl: string,
@@ -134,6 +134,66 @@ export class SonarQubeClient {
       await this.releaseLock(lockFile);
     }
   }
+
+  async triggerDotnetAnalysis(projectPath: string): Promise<void> {
+    const lockFile = path.join(projectPath, '.sonar-analysis.lock');
+
+    try {
+      await this.acquireLock(lockFile);
+
+      const safePath = path.resolve(projectPath);
+      const files = await fs.readdir(safePath);
+      const solutionFile = files.find(f => f.endsWith('.sln'));
+
+
+      const beginArgs = [
+        'sonarscanner',
+        'begin',
+        `/k:"${this.projectKey}"`,
+        `/d:sonar.host.url="${this.client.defaults.baseURL}"`,
+        `/d:sonar.login="${this.getToken()}"`,
+        `/d:sonar.verbose="true"`,
+      ];
+      
+      if (solutionFile) {
+        beginArgs.push(`/d:sonar.solution="${solutionFile}"`);
+      }
+
+      const beginCommand = `dotnet ${beginArgs.join(' ')}`;
+      
+      console.error(`Running .NET analysis step 1 (begin): ${beginCommand}`);
+      await execAsync(beginCommand, { cwd: safePath, maxBuffer: 10 * 1024 * 1024 });
+
+      const buildCommand = solutionFile ? `dotnet build ${shellQuote(solutionFile)}` : 'dotnet build';
+      console.error(`Running .NET analysis step 2 (build): ${buildCommand}`);
+      await execAsync(buildCommand, { cwd: safePath, maxBuffer: 10 * 1024 * 1024 });
+
+      const endArgs = [
+        'sonarscanner',
+        'end',
+        `/d:sonar.login="${this.getToken()}"`,
+      ];
+      const endCommand = `dotnet ${endArgs.join(' ')}`;
+      console.error(`Running .NET analysis step 3 (end): ${endCommand}`);
+      await execAsync(endCommand, { cwd: safePath, maxBuffer: 10 * 1024 * 1024 });
+
+      console.error('Successfully completed .NET analysis steps.');
+
+    } catch (error: any) {
+      let errorMessage = ` .NET analysis failed: ${error.message}`;
+      if (error.stdout) errorMessage += `\nSTDOUT: ${error.stdout}`;
+      if (error.stderr) errorMessage += `\nSTDERR: ${error.stderr}`;
+      
+      if (error.message.includes('dotnet: not found') || error.message.includes('command not found')) {
+        errorMessage += '\n\n- Solution: Install .NET SDK:\n' +
+                      '  - Download from: https://dotnet.microsoft.com/download\n';
+      }
+      throw new Error(errorMessage);
+    } finally {
+      await this.releaseLock(lockFile);
+    }
+  }
+
 
   /**
    * Acquire a file-based lock for sonar-scanner process

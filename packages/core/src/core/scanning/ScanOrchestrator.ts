@@ -213,7 +213,13 @@ export class ScanOrchestrator {
     attempt: number
   ): Promise<void> {
     console.error(`🔍 Starting SonarQube analysis (attempt ${attempt}/${this.options.maxRetries})...`);
-    await sonarClient.triggerAnalysis(this.projectManager.getWorkingDirectory());
+
+    if (sonarClient.projectContext?.buildTool === 'dotnet') {
+      await sonarClient.triggerDotnetAnalysis(this.projectManager.getWorkingDirectory());
+    } else {
+      await sonarClient.triggerAnalysis(this.projectManager.getWorkingDirectory());
+    }
+    
     console.error('✅ Analysis triggered successfully');
 
     console.error('⏳ Waiting for analysis to complete...');
