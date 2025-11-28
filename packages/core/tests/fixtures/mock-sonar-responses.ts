@@ -530,3 +530,40 @@ export function createMockQualityGate(status: 'OK' | 'WARN' | 'ERROR' = 'OK') {
     },
   };
 }
+
+// Line coverage mock data for /api/sources/lines endpoint
+export const mockLineCoverage = {
+  sources: [
+    { line: 1, code: 'package com.example;' },
+    { line: 2, code: '' },
+    { line: 3, code: 'public class Calculator {' },
+    { line: 4, code: '  public int add(int a, int b) {', lineHits: 5 },
+    { line: 5, code: '    return a + b;', lineHits: 5 },
+    { line: 6, code: '  }', lineHits: 5 },
+    { line: 7, code: '' },
+    { line: 8, code: '  public int divide(int a, int b) {', lineHits: 2 },
+    { line: 9, code: '    if (b == 0) {', lineHits: 2, conditions: 2, coveredConditions: 1 },
+    { line: 10, code: '      throw new IllegalArgumentException("Cannot divide by zero");', lineHits: 0 },
+    { line: 11, code: '    }', lineHits: 0 },
+    { line: 12, code: '    return a / b;', lineHits: 2 },
+    { line: 13, code: '  }', lineHits: 2 },
+    { line: 14, code: '' },
+    { line: 15, code: '  public int multiply(int a, int b) {', lineHits: 0 },
+    { line: 16, code: '    return a * b;', lineHits: 0 },
+    { line: 17, code: '  }', lineHits: 0 },
+    { line: 18, code: '}' },
+  ],
+};
+
+// Helper to create custom line coverage mock
+export function createMockLineCoverage(
+  lines: Array<{
+    line: number;
+    code: string;
+    lineHits?: number;
+    conditions?: number;
+    coveredConditions?: number;
+  }>
+) {
+  return { sources: lines };
+}

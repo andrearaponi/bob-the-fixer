@@ -333,3 +333,43 @@ export interface SonarQualityGateStatus {
   };
   caycStatus?: string;
 }
+
+// Line coverage types for /api/sources/lines endpoint
+export interface SonarLineCoverage {
+  line: number;
+  code: string;
+  lineHits?: number;      // 0 = not covered, >0 = covered (number of hits)
+  utLineHits?: number;    // Unit test hits (often same as lineHits)
+  conditions?: number;    // Number of branch conditions (e.g., if/else)
+  coveredConditions?: number; // Number of covered branch conditions
+  duplicated?: boolean;
+  isNew?: boolean;
+  scmAuthor?: string;
+  scmDate?: string;
+  scmRevision?: string;
+}
+
+export interface SonarLineCoverageResponse {
+  sources: SonarLineCoverage[];
+}
+
+// Coverage gap analysis types for CoverageAnalyzer
+export interface CoverageGap {
+  startLine: number;
+  endLine: number;
+  lines: SonarLineCoverage[];
+  type: 'uncovered' | 'partial_branch';  // uncovered = lineHits === 0, partial = conditions not fully covered
+  codeSnippet?: string;  // Optional: the actual code for these lines
+}
+
+export interface CoverageAnalysisResult {
+  componentKey: string;
+  totalLines: number;
+  executableLines: number;  // Lines that can be covered (have lineHits property)
+  coveredLines: number;
+  uncoveredLines: number;
+  coveragePercentage: number;
+  gaps: CoverageGap[];
+  summary: string;  // Human-readable summary for LLM
+}
+  

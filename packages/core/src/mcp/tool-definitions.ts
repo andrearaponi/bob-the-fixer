@@ -326,5 +326,29 @@ export const toolDefinitions = [
       },
       required: ['sonarUrl', 'projectKey', 'token']
     }
+  },
+  {
+    name: 'sonar_get_coverage_gaps',
+    description: '[EN] Analyze code coverage gaps for a specific file. Returns uncovered code blocks and partial branch coverage with code snippets, optimized for LLM-assisted test generation.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        componentKey: {
+          type: 'string' as const,
+          description: 'SonarQube component key (e.g., "project:src/main/java/Calculator.java"). Use sonar_get_project_metrics to find file keys.'
+        },
+        minGapSize: {
+          type: 'number' as const,
+          minimum: 1,
+          maximum: 50,
+          description: 'Minimum number of consecutive uncovered lines to report as a gap (default: 1)'
+        },
+        includePartialBranch: {
+          type: 'boolean' as const,
+          description: 'Include lines with partial branch coverage (default: true)'
+        }
+      },
+      required: ['componentKey']
+    }
   }
 ];

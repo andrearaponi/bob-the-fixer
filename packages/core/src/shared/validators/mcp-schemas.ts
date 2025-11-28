@@ -208,3 +208,21 @@ export const SonarLinkExistingProjectSchema = z.object({
     .describe('SonarQube authentication token with project access permissions'),
   projectPath: SafePathSchema.optional().describe('Path to the project directory (defaults to current working directory)')
 }).describe('[EN] Link an existing SonarQube project to the current directory. Creates local bobthefixer.env configuration file.');
+
+export const SonarGetCoverageGapsSchema = z.object({
+  componentKey: z.string()
+    .min(1, 'Component key cannot be empty')
+    .max(500, 'Component key too long')
+    .describe('SonarQube component key (e.g., "project:src/main/java/Calculator.java")'),
+  minGapSize: z.number()
+    .int('Gap size must be integer')
+    .min(1, 'Gap size must be at least 1')
+    .max(50, 'Gap size cannot exceed 50')
+    .optional()
+    .default(1)
+    .describe('Minimum number of consecutive uncovered lines to report as a gap'),
+  includePartialBranch: z.boolean()
+    .optional()
+    .default(true)
+    .describe('Include lines with partial branch coverage')
+}).describe('[EN] Analyze code coverage gaps for a specific file. Returns uncovered code blocks and partial branch coverage with code snippets, optimized for LLM-assisted test generation.');

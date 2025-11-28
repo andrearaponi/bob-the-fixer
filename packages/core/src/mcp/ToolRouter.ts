@@ -22,6 +22,7 @@ import { handleCleanup } from './handlers/cleanup.handler.js';
 import { handleDiagnosePermissions } from './handlers/diagnose-permissions.handler.js';
 import { handleDeleteProject } from './handlers/delete-project.handler.js';
 import { handleLinkExistingProject } from './handlers/link-existing-project.handler.js';
+import { handleGetCoverageGaps } from './handlers/coverage-gaps.handler.js';
 
 /**
  * Handler function signature
@@ -48,7 +49,8 @@ export const toolRoutes: Record<string, ToolHandler> = {
   sonar_get_project_metrics: handleGetProjectMetrics,
   sonar_analyze_patterns: handleAnalyzePatterns,
   sonar_delete_project: handleDeleteProject,
-  sonar_link_existing_project: handleLinkExistingProject
+  sonar_link_existing_project: handleLinkExistingProject,
+  sonar_get_coverage_gaps: handleGetCoverageGaps
 };
 
 /**
