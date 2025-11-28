@@ -14,6 +14,8 @@ import {
   mock401Response,
   mock403Response,
   mock404Response,
+  mockLineCoverage,
+  createMockLineCoverage,
 } from '../../tests/fixtures/mock-sonar-responses';
 
 // Mock axios
@@ -838,6 +840,125 @@ describe('SonarQubeClient', () => {
       const duplication = await client.getDuplicationDetails('clean-file.ts');
 
       expect(duplication.duplications).toEqual([]);
+    });
+  });
+
+  describe('getLineCoverage', () => {
+    beforeEach(() => {
+      client = new SonarQubeClient(
+        'http://localhost:9000',
+        'test-token',
+        'test-project'
+      );
+    });
+
+    it('should fetch line coverage successfully', async () => {
+      mockAxiosInstance.get = vi.fn(async () => ({ data: mockLineCoverage }));
+
+      const coverage = await client.getLineCoverage('test-project:src/Calculator.java');
+
+      expect(mockAxiosInstance.get).toHaveBeenCalledWith('/api/sources/lines', {
+        params: {
+          key: 'test-project:src/Calculator.java',
+        },
+      });
+      expect(coverage).toEqual(mockLineCoverage.sources);
+    });
+
+    it('should identify covered lines (lineHits > 0)', async () => {
+      mockAxiosInstance.get = vi.fn(async () => ({ data: mockLineCoverage }));
+
+      const coverage = await client.getLineCoverage('test-project:src/Calculator.java');
+
+      // Line 4-6 should be covered (lineHits > 0)
+      const coveredLines = coverage.filter(line => line.lineHits !== undefined && line.lineHits > 0);
+      expect(coveredLines.length).toBeGreaterThan(0);
+      expect(coveredLines.some(l => l.line === 4)).toBe(true);
+    });
+
+    it('should identify uncovered lines (lineHits === 0)', async () => {
+      mockAxiosInstance.get = vi.fn(async () => ({ data: mockLineCoverage }));
+
+      const coverage = await client.getLineCoverage('test-project:src/Calculator.java');
+
+      // Lines 10, 11, 15, 16, 17 should be uncovered (lineHits === 0)
+      const uncoveredLines = coverage.filter(line => line.lineHits === 0);
+      expect(uncoveredLines.length).toBeGreaterThan(0);
+      expect(uncoveredLines.some(l => l.line === 10)).toBe(true);
+      expect(uncoveredLines.some(l => l.line === 15)).toBe(true);
+    });
+
+    it('should identify partial branch coverage', async () => {
+      mockAxiosInstance.get = vi.fn(async () => ({ data: mockLineCoverage }));
+
+      const coverage = await client.getLineCoverage('test-project:src/Calculator.java');
+
+      // Line 9 should have partial branch coverage (conditions: 2, coveredConditions: 1)
+      const partialCoverageLine = coverage.find(l => l.line === 9);
+      expect(partialCoverageLine).toBeDefined();
+      expect(partialCoverageLine?.conditions).toBe(2);
+      expect(partialCoverageLine?.coveredConditions).toBe(1);
+    });
+
+    it('should identify lines without coverage info (non-executable)', async () => {
+      mockAxiosInstance.get = vi.fn(async () => ({ data: mockLineCoverage }));
+
+      const coverage = await client.getLineCoverage('test-project:src/Calculator.java');
+
+      // Line 1, 2, 3 have no lineHits (not executable)
+      const nonExecutableLines = coverage.filter(line => line.lineHits === undefined);
+      expect(nonExecutableLines.length).toBeGreaterThan(0);
+      expect(nonExecutableLines.some(l => l.line === 1)).toBe(true);
+    });
+
+    it('should handle empty coverage response', async () => {
+      mockAxiosInstance.get = vi.fn(async () => ({ data: { sources: [] } }));
+
+      const coverage = await client.getLineCoverage('empty-file');
+
+      expect(coverage).toEqual([]);
+    });
+
+    it('should handle 404 not found', async () => {
+      mockAxiosInstance.get = vi.fn(async () => {
+        throw { response: { status: 404, data: mock404Response } };
+      });
+
+      await expect(client.getLineCoverage('non-existent-file')).rejects.toThrow();
+    });
+
+    it('should handle 403 forbidden', async () => {
+      mockAxiosInstance.get = vi.fn(async () => {
+        throw { response: { status: 403, data: mock403Response } };
+      });
+
+      await expect(client.getLineCoverage('forbidden-file')).rejects.toThrow();
+    });
+
+    it('should handle network errors', async () => {
+      mockAxiosInstance.get = vi.fn(async () => { throw new Error('Network timeout'); });
+
+      await expect(client.getLineCoverage('error-file')).rejects.toThrow('Network timeout');
+    });
+
+    it('should support pagination with from/to parameters', async () => {
+      mockAxiosInstance.get = vi.fn(async () => ({
+        data: createMockLineCoverage([
+          { line: 100, code: '  return result;', lineHits: 3 },
+          { line: 101, code: '}', lineHits: 3 },
+        ])
+      }));
+
+      const coverage = await client.getLineCoverage('test-file', 100, 101);
+
+      expect(mockAxiosInstance.get).toHaveBeenCalledWith('/api/sources/lines', {
+        params: {
+          key: 'test-file',
+          from: 100,
+          to: 101,
+        },
+      });
+      expect(coverage).toHaveLength(2);
     });
   });
 

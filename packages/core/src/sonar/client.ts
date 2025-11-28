@@ -1,5 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
-import { SonarIssue, IssueFilter, SonarRuleDetails, SonarSecurityHotspot, SonarProjectMetrics, SonarSecurityHotspotDetails, SonarFilesWithDuplication, SonarDuplicationDetails, HotspotStatus, HotspotResolution, HotspotSeverity, SonarRuleSearchFilter, SonarRulesResponse, SonarComponentDetails, SonarQualityGateStatus } from './types';
+import { SonarIssue, IssueFilter, SonarRuleDetails, SonarSecurityHotspot, SonarProjectMetrics, SonarSecurityHotspotDetails, SonarFilesWithDuplication, SonarDuplicationDetails, HotspotStatus, HotspotResolution, HotspotSeverity, SonarRuleSearchFilter, SonarRulesResponse, SonarComponentDetails, SonarQualityGateStatus, SonarLineCoverage } from './types';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as fs from 'fs/promises';
@@ -2107,11 +2107,72 @@ export class SonarQubeClient {
       return response.data;
     } catch (error: any) {
       console.error('Error fetching duplication details:', error.response?.status, error.response?.data);
-      
+
       if (error.response?.status === 404) {
         throw new Error(`File '${fileKey}' not found or has no duplications.`);
       }
-      
+
+      throw error;
+    }
+  }
+
+  /**
+   * Get line-by-line coverage information for a component (file)
+   * Uses /api/sources/lines endpoint which returns coverage data per line
+   *
+   * @param componentKey - The SonarQube component key (e.g., "project:src/main/java/Example.java")
+   * @param from - Optional starting line number
+   * @param to - Optional ending line number
+   * @returns Array of line coverage data
+   *
+   * Coverage interpretation:
+   * - lineHits undefined: Line is not executable (comments, blank lines, declarations)
+   * - lineHits === 0: Line is executable but NOT covered by tests
+   * - lineHits > 0: Line is covered (value indicates number of test hits)
+   * - conditions > coveredConditions: Partial branch coverage
+   */
+  async getLineCoverage(componentKey: string, from?: number, to?: number): Promise<SonarLineCoverage[]> {
+    const params: Record<string, string | number> = {
+      key: componentKey
+    };
+
+    // Add optional pagination parameters
+    if (from !== undefined) {
+      params.from = from;
+    }
+    if (to !== undefined) {
+      params.to = to;
+    }
+
+    try {
+      console.error(`[getLineCoverage] Fetching coverage for: ${componentKey}`);
+      const response = await this.client.get('/api/sources/lines', { params });
+
+      const sources = response.data.sources ?? [];
+      console.error(`[getLineCoverage] Retrieved ${sources.length} lines of coverage data`);
+
+      return sources;
+    } catch (error: any) {
+      console.error('[getLineCoverage] Error:', error.response?.status, error.response?.data);
+
+      if (error.response?.status === 403) {
+        let errorMessage = 'Permission denied when fetching line coverage.';
+
+        if (error.response?.data?.errors) {
+          const errors = error.response.data.errors;
+          errorMessage += ` SonarQube errors: ${errors.map((e: any) => e.msg).join(', ')}`;
+        }
+
+        errorMessage += '\n\n🔧 Possible solutions:\n' +
+          '  1. Verify the token has "Browse" permission on the project\n' +
+          '  2. Check if the component key is correct\n' +
+          '  3. Ensure the file exists in the project';
+
+        throw new Error(errorMessage);
+      } else if (error.response?.status === 404) {
+        throw new Error(`Component '${componentKey}' not found. Verify the component key is correct.`);
+      }
+
       throw error;
     }
   }
