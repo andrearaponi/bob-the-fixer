@@ -1,6 +1,6 @@
 {
   "name": "@bob-the-fixer/core",
-  "version": "0.1.0-beta",
+  "version": "0.2.0-beta",
   "description": "Enterprise-grade MCP Server - SonarQube integration with advanced security for AI assistants",
   "main": "dist/universal-mcp-server.js",
   "types": "dist/universal-mcp-server.d.ts",
