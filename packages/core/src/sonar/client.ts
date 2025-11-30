@@ -1283,28 +1283,45 @@ export class SonarQubeClient {
       params.push(`-Dsonar.sources=${projectPath}`);
     }
 
-    // Python exclusions
+    // Check if test directory exists
+    let testDir: string | null = null;
+    const testDirs = ['test', 'tests'];
+    for (const dir of testDirs) {
+      try {
+        await fs.access(path.join(projectPath, dir));
+        testDir = dir;
+        break;
+      } catch {
+        // Directory doesn't exist
+      }
+    }
+
+    // Python exclusions - IMPORTANT: Do NOT exclude test files if we have a test directory
+    // SonarQube doesn't allow files to be both in exclusions and in sonar.tests
     const exclusions = [
       '**/__pycache__/**',
       '**/venv/**',
       '**/env/**',
       '**/.venv/**',
-      '**/site-packages/**',
-      '**/test_*.py',
-      '**/*_test.py'
+      '**/site-packages/**'
     ];
+
+    // Only exclude test files from sources if there's NO separate test directory
+    // If there IS a test directory, use sonar.tests instead (which properly separates test code)
+    if (!testDir) {
+      exclusions.push('**/test_*.py');
+      exclusions.push('**/*_test.py');
+      console.error('ℹ️  No test directory found - excluding test files from sources');
+    }
+
     params.push(`-Dsonar.exclusions=${exclusions.join(',')}`);
 
-    // Test directories
-    const testDirs = ['test', 'tests'];
-    for (const dir of testDirs) {
-      try {
-        await fs.access(path.join(projectPath, dir));
-        params.push(`-Dsonar.tests=${dir}`);
-        break;
-      } catch {
-        // Directory doesn't exist
-      }
+    // Add test directory if found
+    if (testDir) {
+      params.push(`-Dsonar.tests=${testDir}`);
+      // Also add test file patterns for proper test identification
+      params.push('-Dsonar.test.inclusions=**/test_*.py,**/*_test.py');
+      console.error(`✅ Found test directory: ${testDir}`);
     }
 
     // Add Python version detection (CRITICAL for accurate analysis)
