@@ -2,6 +2,9 @@
  * Shared types used across the application
  */
 
+// Re-export fallback types
+export * from './fallback.js';
+
 // MCP Response types
 export interface MCPResponse {
   content: MCPContent[];

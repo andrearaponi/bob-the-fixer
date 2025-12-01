@@ -3,7 +3,8 @@
  * Delegates to ScanOrchestrator and formats response
  */
 
-import { ScanOrchestrator, ScanResultProcessor } from '../../core/scanning/index.js';
+import { ScanOrchestrator, ScanResultProcessor, ScanRecoverableError } from '../../core/scanning/index.js';
+import { ScanFallbackService } from '../../core/scanning/fallback/index.js';
 import { ProjectManager } from '../../universal/project-manager.js';
 import { SonarAdmin } from '../../universal/sonar-admin.js';
 import { validateInput, SonarScanProjectSchema } from '../../shared/validators/mcp-schemas.js';
@@ -36,12 +37,29 @@ export async function handleScanProject(
 
   // Create orchestrator and execute scan
   const orchestrator = new ScanOrchestrator(projectManager, sonarAdmin);
-  const result = await orchestrator.execute(scanParams, correlationId);
 
-  // Format result as text summary
-  const summary = ScanResultProcessor.formatAsTextSummary(result);
+  try {
+    const result = await orchestrator.execute(scanParams, correlationId);
 
-  return {
-    content: [{ type: 'text', text: summary }]
-  };
+    // Format result as text summary
+    const summary = ScanResultProcessor.formatAsTextSummary(result);
+
+    return {
+      content: [{ type: 'text', text: summary }]
+    };
+  } catch (error) {
+    // Handle recoverable scan errors with fallback information
+    if (error instanceof ScanRecoverableError) {
+      const fallbackService = new ScanFallbackService();
+      const formattedOutput = fallbackService.formatForOutput(error.fallbackAnalysis);
+
+      return {
+        content: [{ type: 'text', text: formattedOutput }],
+        isError: true
+      };
+    }
+
+    // Re-throw other errors
+    throw error;
+  }
 }

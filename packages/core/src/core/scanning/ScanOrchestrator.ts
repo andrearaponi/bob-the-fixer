@@ -8,7 +8,8 @@ import { ProjectManager, ProjectConfig } from '../../universal/project-manager.j
 import { SonarAdmin } from '../../universal/sonar-admin.js';
 import { getLogger, StructuredLogger } from '../../shared/logger/structured-logger.js';
 import { sanitizePath } from '../../infrastructure/security/input-sanitization.js';
-import { ScanParams, ScanResult, Issue, ProjectContext } from '../../shared/types/index.js';
+import { ScanParams, ScanResult, Issue, ProjectContext, FallbackAnalysisResult } from '../../shared/types/index.js';
+import { ScanFallbackService } from './fallback/index.js';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 
@@ -24,6 +25,21 @@ import { verifyProjectSetup } from '../../sonar/index.js';
 export interface ScanOptions {
   maxRetries?: number;
   retryDelay?: number;
+  enableFallback?: boolean;
+}
+
+/**
+ * Custom error for recoverable scan failures
+ * Contains fallback analysis for Claude to use
+ */
+export class ScanRecoverableError extends Error {
+  public readonly fallbackAnalysis: FallbackAnalysisResult;
+
+  constructor(message: string, fallbackAnalysis: FallbackAnalysisResult) {
+    super(message);
+    this.name = 'ScanRecoverableError';
+    this.fallbackAnalysis = fallbackAnalysis;
+  }
 }
 
 export class ScanOrchestrator {
@@ -38,7 +54,8 @@ export class ScanOrchestrator {
     this.logger = getLogger();
     this.options = {
       maxRetries: options.maxRetries ?? 2,
-      retryDelay: options.retryDelay ?? 5000
+      retryDelay: options.retryDelay ?? 5000,
+      enableFallback: options.enableFallback ?? true
     };
   }
 
@@ -200,9 +217,53 @@ export class ScanOrchestrator {
           continue;
         }
 
+        // Check if this is a recoverable error and fallback is enabled
+        if (this.options.enableFallback && this.isRecoverableConfigError(error)) {
+          const fallbackResult = await this.performFallbackAnalysis(error, correlationId);
+          throw new ScanRecoverableError(
+            'Scan failed but can be recovered with proper configuration',
+            fallbackResult
+          );
+        }
+
         throw new Error(this.buildAnalysisErrorMessage(error, attempt, config));
       }
     }
+  }
+
+  /**
+   * Check if error is a recoverable configuration error
+   */
+  private isRecoverableConfigError(error: any): boolean {
+    const message = error.message ?? '';
+    const recoverablePatterns = [
+      /Unable to find source/i,
+      /No sources found/i,
+      /sonar\.sources.*does not exist/i,
+      /Unable to find.*classes/i,
+      /sonar\.java\.binaries/i,
+      /Module.*not found/i,
+      /Invalid module configuration/i,
+      /No files nor directories matching/i,
+      /Unable to determine language/i
+    ];
+
+    return recoverablePatterns.some(pattern => pattern.test(message));
+  }
+
+  /**
+   * Perform fallback analysis for recoverable errors
+   */
+  private async performFallbackAnalysis(
+    error: any,
+    correlationId?: string
+  ): Promise<FallbackAnalysisResult> {
+    this.logger.info('Performing fallback analysis for recoverable error', { error: error.message }, correlationId);
+
+    const fallbackService = new ScanFallbackService();
+    const projectPath = this.projectManager.getWorkingDirectory();
+
+    return await fallbackService.analyze(error.message, projectPath);
   }
 
   /**

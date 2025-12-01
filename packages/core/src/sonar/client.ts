@@ -809,6 +809,20 @@ export class SonarQubeClient {
    * Build language-specific scanner parameters
    */
   private async buildScannerParameters(projectPath: string): Promise<string[]> {
+    // Check if sonar-project.properties exists
+    const propsFile = path.join(projectPath, 'sonar-project.properties');
+    const hasPropertiesFile = await this.fileExists(propsFile);
+
+    if (hasPropertiesFile) {
+      // Use minimal parameters - the rest comes from the properties file
+      console.error('📄 Using sonar-project.properties file for configuration');
+      return [
+        `-Dsonar.host.url=${this.client.defaults.baseURL}`,
+        `-Dsonar.login=${this.getToken()}`,
+        `-Dsonar.projectVersion=${Date.now()}`
+      ];
+    }
+
     const params = [
       `-Dsonar.projectKey=${this.projectKey}`,
       `-Dsonar.host.url=${this.client.defaults.baseURL}`,
@@ -852,6 +866,60 @@ export class SonarQubeClient {
     }
 
     return params;
+  }
+
+  /**
+   * Check if a file exists
+   */
+  private async fileExists(filePath: string): Promise<boolean> {
+    try {
+      await fs.access(filePath);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Check if a directory contains Python files (recursively, max 2 levels)
+   */
+  private async directoryContainsPythonFiles(dirPath: string): Promise<boolean> {
+    try {
+      await fs.access(dirPath);
+    } catch {
+      return false; // Directory doesn't exist
+    }
+
+    const checkDir = async (dir: string, depth: number): Promise<boolean> => {
+      if (depth > 2) return false;
+
+      try {
+        const entries = await fs.readdir(dir, { withFileTypes: true });
+
+        for (const entry of entries) {
+          if (entry.name.startsWith('.') || entry.name === '__pycache__' ||
+              entry.name === 'venv' || entry.name === 'env' || entry.name === 'node_modules') {
+            continue;
+          }
+
+          if (entry.isFile() && entry.name.endsWith('.py')) {
+            return true;
+          }
+
+          if (entry.isDirectory()) {
+            if (await checkDir(path.join(dir, entry.name), depth + 1)) {
+              return true;
+            }
+          }
+        }
+      } catch {
+        // Ignore errors
+      }
+
+      return false;
+    };
+
+    return checkDir(dirPath, 0);
   }
 
   /**
@@ -1075,41 +1143,117 @@ export class SonarQubeClient {
       return; // Not a Java project, skip check
     }
 
-    const buildTool = this.projectContext.buildTool;
-    let compiledClassesDir: string;
-    let compileCommand: string;
+    // Skip check if sonar-project.properties exists (user has custom config)
+    const propsFile = path.join(projectPath, 'sonar-project.properties');
+    if (await this.fileExists(propsFile)) {
+      console.error('📄 sonar-project.properties found, skipping compilation check');
+      return;
+    }
 
-    // Determine the expected compiled classes directory and compile command
+    const buildTool = this.projectContext.buildTool;
+    let compileCommand: string;
+    let possibleBinaryDirs: string[];
+
+    // Determine possible compiled classes directories (including multi-module)
     if (buildTool === 'maven') {
-      compiledClassesDir = path.join(projectPath, 'target', 'classes');
+      possibleBinaryDirs = [
+        path.join(projectPath, 'target', 'classes'),
+        // Multi-module: look for any module with target/classes
+      ];
       compileCommand = 'mvn compile -q';
     } else if (buildTool === 'gradle') {
-      compiledClassesDir = path.join(projectPath, 'build', 'classes', 'java', 'main');
+      possibleBinaryDirs = [
+        path.join(projectPath, 'build', 'classes', 'java', 'main'),
+        path.join(projectPath, 'build', 'classes', 'kotlin', 'main'),
+        // Multi-module: look for any module with build/classes
+      ];
       compileCommand = './gradlew compileJava';
     } else {
       // Unknown build tool, skip check
       return;
     }
 
-    // Check if compiled classes directory exists
-    try {
-      await fs.access(compiledClassesDir);
-      // Directory exists, compilation is done
-    } catch {
-      // Directory doesn't exist, project is not compiled
-      throw new Error(
-        `❌ Java project not compiled\n\n` +
-        `SonarQube requires compiled classes to analyze Java projects.\n\n` +
-        `📝 Please compile your project first:\n` +
-        `   ${compileCommand}\n\n` +
-        `💡 This ensures SonarQube can:\n` +
-        `   - Analyze bytecode for deeper insights\n` +
-        `   - Detect runtime issues and dependencies\n` +
-        `   - Provide accurate code coverage metrics\n\n` +
-        `Expected directory: ${compiledClassesDir}\n\n` +
-        `After compiling, run the scan again.`
-      );
+    // Check standard locations first
+    for (const dir of possibleBinaryDirs) {
+      if (await this.fileExists(dir)) {
+        return; // Found compiled classes
+      }
     }
+
+    // For multi-module projects, search for any compiled classes in subdirectories
+    const hasCompiledClasses = await this.findCompiledClassesRecursive(projectPath, buildTool);
+    if (hasCompiledClasses) {
+      console.error('📦 Found compiled classes in multi-module structure');
+      return;
+    }
+
+    // No compiled classes found - throw error
+    const expectedDir = possibleBinaryDirs[0];
+    throw new Error(
+      `❌ Java project not compiled\n\n` +
+      `SonarQube requires compiled classes to analyze Java projects.\n\n` +
+      `📝 Please compile your project first:\n` +
+      `   ${compileCommand}\n\n` +
+      `💡 This ensures SonarQube can:\n` +
+      `   - Analyze bytecode for deeper insights\n` +
+      `   - Detect runtime issues and dependencies\n` +
+      `   - Provide accurate code coverage metrics\n\n` +
+      `Expected directory: ${expectedDir}\n\n` +
+      `💡 For multi-module projects, you can also use sonar_generate_config\n` +
+      `   to create a custom configuration with correct binary paths.\n\n` +
+      `After compiling, run the scan again.`
+    );
+  }
+
+  /**
+   * Recursively search for compiled classes in multi-module projects
+   */
+  private async findCompiledClassesRecursive(projectPath: string, buildTool?: string): Promise<boolean> {
+    const maxDepth = 3;
+
+    const searchDir = async (dir: string, depth: number): Promise<boolean> => {
+      if (depth > maxDepth) return false;
+
+      try {
+        const entries = await fs.readdir(dir, { withFileTypes: true });
+
+        for (const entry of entries) {
+          if (!entry.isDirectory()) continue;
+
+          const fullPath = path.join(dir, entry.name);
+
+          // Skip common non-module directories
+          if (['node_modules', '.git', '.idea', '.vscode', 'src'].includes(entry.name)) {
+            continue;
+          }
+
+          // Check if this directory contains compiled classes
+          if (buildTool === 'maven' && entry.name === 'target') {
+            const classesDir = path.join(fullPath, 'classes');
+            if (await this.fileExists(classesDir)) {
+              return true;
+            }
+          } else if (buildTool === 'gradle' && entry.name === 'build') {
+            const classesDir = path.join(fullPath, 'classes', 'java', 'main');
+            const kotlinClassesDir = path.join(fullPath, 'classes', 'kotlin', 'main');
+            if (await this.fileExists(classesDir) || await this.fileExists(kotlinClassesDir)) {
+              return true;
+            }
+          }
+
+          // Recurse into subdirectories
+          if (await searchDir(fullPath, depth + 1)) {
+            return true;
+          }
+        }
+      } catch {
+        // Ignore permission errors
+      }
+
+      return false;
+    };
+
+    return searchDir(projectPath, 0);
   }
 
   /**
@@ -1262,25 +1406,31 @@ export class SonarQubeClient {
    * Add Python-specific parameters
    */
   private async addPythonParameters(params: string[], projectPath: string): Promise<void> {
-    // Python source directories
-    const sourceDirs = ['src', 'lib', '.'];
-    const existingDirs: string[] = [];
+    // Python source directories - check common patterns
+    // Must contain actual Python files, not just exist
+    // Note: '.' is checked last and only used if no specific dirs found
+    const specificDirs = ['src', 'app', 'lib'];
+    const dirsWithPython: string[] = [];
 
-    for (const dir of sourceDirs) {
-      try {
-        const fullPath = dir === '.' ? projectPath : path.join(projectPath, dir);
-        await fs.access(fullPath);
-        existingDirs.push(dir);
-        break; // Use first found directory
-      } catch {
-        // Directory doesn't exist
+    for (const dir of specificDirs) {
+      const fullPath = path.join(projectPath, dir);
+      if (await this.directoryContainsPythonFiles(fullPath)) {
+        dirsWithPython.push(dir);
       }
     }
 
-    if (existingDirs.length > 0) {
-      params.push(`-Dsonar.sources=${existingDirs[0]}`);
+    if (dirsWithPython.length > 0) {
+      // Use specific directories that contain Python files
+      params.push(`-Dsonar.sources=${dirsWithPython.join(',')}`);
+      console.error(`✅ Python sources found in: ${dirsWithPython.join(', ')}`);
+    } else if (await this.directoryContainsPythonFiles(projectPath)) {
+      // Fallback to project root only if it has Python files and no specific dirs
+      params.push(`-Dsonar.sources=.`);
+      console.error('✅ Python sources found in project root');
     } else {
-      params.push(`-Dsonar.sources=${projectPath}`);
+      // Last resort
+      params.push(`-Dsonar.sources=.`);
+      console.error('⚠️ No Python source directories found, using project root');
     }
 
     // Python exclusions

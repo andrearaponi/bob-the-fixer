@@ -226,3 +226,75 @@ export const SonarGetCoverageGapsSchema = z.object({
     .default(true)
     .describe('Include lines with partial branch coverage')
 }).describe('[EN] Analyze code coverage gaps for a specific file. Returns uncovered code blocks and partial branch coverage with code snippets, optimized for LLM-assisted test generation.');
+
+// Module configuration for multi-module projects
+const SonarModuleConfigSchema = z.object({
+  name: z.string()
+    .min(1, 'Module name cannot be empty')
+    .max(100, 'Module name too long')
+    .regex(/^[a-zA-Z0-9_-]+$/, 'Module name contains invalid characters')
+    .describe('Module name (used as identifier in sonar.modules)'),
+  baseDir: z.string()
+    .min(1, 'Base directory cannot be empty')
+    .describe('Module base directory relative to project root'),
+  sources: z.string()
+    .min(1, 'Sources cannot be empty')
+    .describe('Comma-separated source directories'),
+  tests: z.string()
+    .optional()
+    .describe('Comma-separated test directories'),
+  binaries: z.string()
+    .optional()
+    .describe('Java/Kotlin compiled classes directory'),
+  exclusions: z.string()
+    .optional()
+    .describe('Comma-separated exclusion patterns for this module'),
+  language: z.string()
+    .optional()
+    .describe('Primary language for this module')
+});
+
+export const SonarGenerateConfigSchema = z.object({
+  projectPath: SafePathSchema.optional()
+    .describe('Project directory path (defaults to current working directory)'),
+  config: z.object({
+    projectKey: ProjectKeySchema.optional()
+      .describe('SonarQube project key (optional - will use from bobthefixer.env if not provided)'),
+    projectName: z.string()
+      .max(200, 'Project name too long')
+      .optional()
+      .describe('Human-readable project name'),
+    projectVersion: z.string()
+      .max(50, 'Version too long')
+      .optional()
+      .describe('Project version'),
+    sources: z.string()
+      .min(1, 'Sources cannot be empty')
+      .describe('Comma-separated source directories (e.g., "src,lib")'),
+    tests: z.string()
+      .optional()
+      .describe('Comma-separated test directories'),
+    exclusions: z.string()
+      .optional()
+      .describe('Comma-separated exclusion patterns (e.g., "**/node_modules/**,**/dist/**")'),
+    encoding: z.string()
+      .optional()
+      .default('UTF-8')
+      .describe('Source file encoding'),
+    modules: z.array(SonarModuleConfigSchema)
+      .optional()
+      .describe('Multi-module project configuration'),
+    javaBinaries: z.string()
+      .optional()
+      .describe('Java compiled classes directory (for Java projects)'),
+    javaLibraries: z.string()
+      .optional()
+      .describe('Path to Java libraries'),
+    coverageReportPaths: z.string()
+      .optional()
+      .describe('Path to coverage report files'),
+    additionalProperties: z.record(z.string())
+      .optional()
+      .describe('Additional SonarQube properties as key-value pairs')
+  }).describe('SonarQube project configuration')
+}).describe('[EN] Generate sonar-project.properties file for SonarQube scanning. Use this after sonar_scan_project fails to create a proper configuration based on project structure.');

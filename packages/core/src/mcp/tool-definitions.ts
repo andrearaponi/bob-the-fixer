@@ -350,5 +350,88 @@ export const toolDefinitions = [
       },
       required: ['componentKey']
     }
+  },
+  {
+    name: 'sonar_generate_config',
+    description: '[EN] Generate sonar-project.properties file for SonarQube scanning. Use this after sonar_scan_project fails with configuration errors (sources not found, module errors, etc.) to create a proper configuration based on project structure analysis.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        projectPath: {
+          type: 'string' as const,
+          description: 'Project directory path (defaults to current working directory)'
+        },
+        config: {
+          type: 'object' as const,
+          description: 'SonarQube project configuration',
+          properties: {
+            projectKey: {
+              type: 'string' as const,
+              description: 'SonarQube project key (optional - will use from bobthefixer.env if available)'
+            },
+            projectName: {
+              type: 'string' as const,
+              description: 'Human-readable project name'
+            },
+            projectVersion: {
+              type: 'string' as const,
+              description: 'Project version'
+            },
+            sources: {
+              type: 'string' as const,
+              description: 'Comma-separated source directories (e.g., "src,lib")'
+            },
+            tests: {
+              type: 'string' as const,
+              description: 'Comma-separated test directories'
+            },
+            exclusions: {
+              type: 'string' as const,
+              description: 'Comma-separated exclusion patterns (e.g., "**/node_modules/**,**/dist/**")'
+            },
+            encoding: {
+              type: 'string' as const,
+              description: 'Source file encoding (default: UTF-8)'
+            },
+            modules: {
+              type: 'array' as const,
+              description: 'Multi-module project configuration',
+              items: {
+                type: 'object' as const,
+                properties: {
+                  name: { type: 'string' as const, description: 'Module name' },
+                  baseDir: { type: 'string' as const, description: 'Module base directory' },
+                  sources: { type: 'string' as const, description: 'Source directories' },
+                  tests: { type: 'string' as const, description: 'Test directories' },
+                  binaries: { type: 'string' as const, description: 'Java binaries directory' },
+                  exclusions: { type: 'string' as const, description: 'Exclusion patterns' },
+                  language: { type: 'string' as const, description: 'Primary language' }
+                },
+                required: ['name', 'baseDir', 'sources']
+              }
+            },
+            javaBinaries: {
+              type: 'string' as const,
+              description: 'Java compiled classes directory (for Java projects)'
+            },
+            javaLibraries: {
+              type: 'string' as const,
+              description: 'Path to Java libraries'
+            },
+            coverageReportPaths: {
+              type: 'string' as const,
+              description: 'Path to coverage report files'
+            },
+            additionalProperties: {
+              type: 'object' as const,
+              description: 'Additional SonarQube properties as key-value pairs',
+              additionalProperties: { type: 'string' as const }
+            }
+          },
+          required: ['sources']
+        }
+      },
+      required: ['config']
+    }
   }
 ];

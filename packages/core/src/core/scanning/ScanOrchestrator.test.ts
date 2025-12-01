@@ -75,8 +75,10 @@ vi.mock('../../sonar/index', () => ({
 vi.mock('fs/promises', () => ({
   default: {
     access: vi.fn(async () => { throw new Error('File not found'); }),
+    readdir: vi.fn(async () => []),
   },
   access: vi.fn(async () => { throw new Error('File not found'); }),
+  readdir: vi.fn(async () => []),
 }));
 
 vi.mock('../../shared/utils/server-utils', () => ({
@@ -384,6 +386,177 @@ describe('ScanOrchestrator', () => {
       expect(result.issuesByType).toBeDefined();
       expect(result.issuesByType?.BUG).toBe(1);
       expect(result.issuesByType?.CODE_SMELL).toBe(2);
+    });
+  });
+
+  describe('Fallback System', () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+
+      mockProjectManager.analyzeProject = vi.fn(async () => mockProjectContext);
+      mockProjectManager.getOrCreateConfig = vi.fn(async () => mockConfig);
+      mockProjectManager.getWorkingDirectory = vi.fn(() => '/test/project');
+    });
+
+    it('should throw ScanRecoverableError for recoverable config errors', async () => {
+      // Simulate a "sources not found" error
+      mockSonarClient.triggerAnalysis = vi.fn(async () => {
+        throw new Error('Unable to find source files in specified path');
+      });
+
+      const orch = new ScanOrchestrator(mockProjectManager, mockSonarAdmin, {
+        enableFallback: true
+      });
+
+      try {
+        await orch.execute({ autoSetup: false });
+        // Should not reach here
+        expect(true).toBe(false);
+      } catch (error: any) {
+        expect(error.name).toBe('ScanRecoverableError');
+        expect(error.fallbackAnalysis).toBeDefined();
+        expect(error.fallbackAnalysis.parsedError).toBeDefined();
+        expect(error.fallbackAnalysis.projectStructure).toBeDefined();
+      }
+    });
+
+    it('should not throw ScanRecoverableError when fallback is disabled', async () => {
+      mockSonarClient.triggerAnalysis = vi.fn(async () => {
+        throw new Error('Unable to find source files');
+      });
+
+      const orch = new ScanOrchestrator(mockProjectManager, mockSonarAdmin, {
+        enableFallback: false
+      });
+
+      try {
+        await orch.execute({ autoSetup: false });
+        expect(true).toBe(false);
+      } catch (error: any) {
+        expect(error.name).not.toBe('ScanRecoverableError');
+      }
+    });
+
+    it('should not throw ScanRecoverableError for non-recoverable errors', async () => {
+      // Permission denied is not recoverable
+      mockSonarClient.triggerAnalysis = vi.fn(async () => {
+        throw new Error('Permission denied: 403');
+      });
+
+      const orch = new ScanOrchestrator(mockProjectManager, mockSonarAdmin, {
+        enableFallback: true
+      });
+
+      try {
+        await orch.execute({ autoSetup: false });
+        expect(true).toBe(false);
+      } catch (error: any) {
+        expect(error.name).not.toBe('ScanRecoverableError');
+      }
+    });
+
+    it('should detect "No sources found" as recoverable', async () => {
+      mockSonarClient.triggerAnalysis = vi.fn(async () => {
+        throw new Error('No sources found for analysis');
+      });
+
+      const orch = new ScanOrchestrator(mockProjectManager, mockSonarAdmin, {
+        enableFallback: true
+      });
+
+      try {
+        await orch.execute({ autoSetup: false });
+        expect(true).toBe(false);
+      } catch (error: any) {
+        expect(error.name).toBe('ScanRecoverableError');
+      }
+    });
+
+    it('should detect "sonar.java.binaries" error as recoverable', async () => {
+      mockSonarClient.triggerAnalysis = vi.fn(async () => {
+        throw new Error('Your project contains Java files but sonar.java.binaries is not set');
+      });
+
+      const orch = new ScanOrchestrator(mockProjectManager, mockSonarAdmin, {
+        enableFallback: true
+      });
+
+      try {
+        await orch.execute({ autoSetup: false });
+        expect(true).toBe(false);
+      } catch (error: any) {
+        expect(error.name).toBe('ScanRecoverableError');
+      }
+    });
+
+    it('should detect "Module not found" as recoverable', async () => {
+      mockSonarClient.triggerAnalysis = vi.fn(async () => {
+        throw new Error('Module "backend" not found in configuration');
+      });
+
+      const orch = new ScanOrchestrator(mockProjectManager, mockSonarAdmin, {
+        enableFallback: true
+      });
+
+      try {
+        await orch.execute({ autoSetup: false });
+        expect(true).toBe(false);
+      } catch (error: any) {
+        expect(error.name).toBe('ScanRecoverableError');
+      }
+    });
+
+    it('should include recovery recommendation in fallback result', async () => {
+      mockSonarClient.triggerAnalysis = vi.fn(async () => {
+        throw new Error('No sources found');
+      });
+
+      const orch = new ScanOrchestrator(mockProjectManager, mockSonarAdmin, {
+        enableFallback: true
+      });
+
+      try {
+        await orch.execute({ autoSetup: false });
+        expect(true).toBe(false);
+      } catch (error: any) {
+        expect(error.fallbackAnalysis.recommendation).toBeDefined();
+        expect(error.fallbackAnalysis.recommendation).toContain('sonar_generate_config');
+      }
+    });
+
+    it('should enable fallback by default', async () => {
+      mockSonarClient.triggerAnalysis = vi.fn(async () => {
+        throw new Error('Unable to find source files');
+      });
+
+      // Create without explicit enableFallback option
+      const orch = new ScanOrchestrator(mockProjectManager, mockSonarAdmin);
+
+      try {
+        await orch.execute({ autoSetup: false });
+        expect(true).toBe(false);
+      } catch (error: any) {
+        // Should use fallback by default
+        expect(error.name).toBe('ScanRecoverableError');
+      }
+    });
+
+    it('should include suggested template in fallback result', async () => {
+      mockSonarClient.triggerAnalysis = vi.fn(async () => {
+        throw new Error('No sources found');
+      });
+
+      const orch = new ScanOrchestrator(mockProjectManager, mockSonarAdmin, {
+        enableFallback: true
+      });
+
+      try {
+        await orch.execute({ autoSetup: false });
+        expect(true).toBe(false);
+      } catch (error: any) {
+        expect(error.fallbackAnalysis.suggestedTemplate).toBeDefined();
+        expect(error.fallbackAnalysis.suggestedTemplate).toContain('sonar.projectKey');
+      }
     });
   });
 });
