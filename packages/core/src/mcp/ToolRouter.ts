@@ -69,14 +69,19 @@ export async function routeTool(toolName: string, args: any, correlationId?: str
   const result = await handler(args, correlationId);
 
   // Prepend version update banner if available (only shown once per session)
-  const versionChecker = getVersionChecker();
-  const banner = versionChecker?.getUpdateBannerOnce();
+  // Wrapped in try-catch to never block tool execution (offline support)
+  try {
+    const versionChecker = getVersionChecker();
+    const banner = versionChecker?.getUpdateBannerOnce();
 
-  if (banner && result.content && result.content.length > 0 && !result.isError) {
-    const firstContent = result.content[0];
-    if (firstContent.type === 'text' && typeof firstContent.text === 'string') {
-      firstContent.text = banner + firstContent.text;
+    if (banner && result.content && result.content.length > 0 && !result.isError) {
+      const firstContent = result.content[0];
+      if (firstContent.type === 'text' && typeof firstContent.text === 'string') {
+        firstContent.text = banner + firstContent.text;
+      }
     }
+  } catch {
+    // Silently ignore - never block tool execution
   }
 
   return result;
