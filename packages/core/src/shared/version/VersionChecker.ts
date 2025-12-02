@@ -23,6 +23,7 @@ export class VersionChecker {
   private checkTimer?: ReturnType<typeof setInterval>;
   private lastCheckResult?: VersionCheckResult;
   private isDestroyed = false;
+  private notificationShown = false;
 
   constructor(config: VersionCheckerConfig) {
     this.logger = getLogger();
@@ -125,6 +126,30 @@ export class VersionChecker {
    */
   getLastCheckResult(): VersionCheckResult | undefined {
     return this.lastCheckResult;
+  }
+
+  /**
+   * Get update banner message (only returns once per session)
+   * Returns null if no update available or already shown
+   */
+  getUpdateBannerOnce(): string | null {
+    if (this.notificationShown) {
+      return null;
+    }
+
+    if (!this.lastCheckResult?.updateAvailable) {
+      return null;
+    }
+
+    this.notificationShown = true;
+    const { latestVersion, currentVersion, releaseUrl } = this.lastCheckResult;
+
+    return `\n` +
+      `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+      `  UPDATE AVAILABLE: Bob the Fixer v${latestVersion}\n` +
+      `  Current version: v${currentVersion}\n` +
+      `  ${releaseUrl ?? 'https://github.com/andrearaponi/bob-the-fixer/releases'}\n` +
+      `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
   }
 
   /**

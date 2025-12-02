@@ -5,6 +5,7 @@
  */
 
 import { MCPResponse } from '../shared/types/index.js';
+import { getVersionChecker } from '../shared/version/index.js';
 import { handleScanProject } from './handlers/scan.handler.js';
 import { handleAutoSetup } from './handlers/project-setup.handler.js';
 import { handleProjectDiscovery } from './handlers/project-discovery.handler.js';
@@ -58,14 +59,27 @@ export const toolRoutes: Record<string, ToolHandler> = {
 /**
  * Route a tool call to the appropriate handler
  */
-export function routeTool(toolName: string, args: any, correlationId?: string): Promise<MCPResponse> {
+export async function routeTool(toolName: string, args: any, correlationId?: string): Promise<MCPResponse> {
   const handler = toolRoutes[toolName];
 
   if (!handler) {
     throw new Error(`Unknown tool: ${toolName}`);
   }
 
-  return handler(args, correlationId);
+  const result = await handler(args, correlationId);
+
+  // Prepend version update banner if available (only shown once per session)
+  const versionChecker = getVersionChecker();
+  const banner = versionChecker?.getUpdateBannerOnce();
+
+  if (banner && result.content && result.content.length > 0 && !result.isError) {
+    const firstContent = result.content[0];
+    if (firstContent.type === 'text' && typeof firstContent.text === 'string') {
+      firstContent.text = banner + firstContent.text;
+    }
+  }
+
+  return result;
 }
 
 /**
