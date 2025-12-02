@@ -2,9 +2,9 @@
 
 **Intelligent AI system for code quality & security analysis with SonarQube.** Achieve **ZERO technical debt** through automated analysis, security scanning, and natural language interaction with your AI assistant.
 
-> 🚀 **Early Release**: v0.2.0 - Coverage Driven Development & 18 MCP tools
+> 🚀 **Release**: v0.3.0 - Version Notification System & 20 MCP tools
 
-![Version](https://img.shields.io/badge/version-0.2.0--beta-blue)
+![Version](https://img.shields.io/badge/version-0.3.0-blue)
 ![License](https://img.shields.io/badge/license-AGPL--3.0-green)
 ![Node](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen)
 ![Container](https://img.shields.io/badge/podman-recommended-blue)
@@ -19,7 +19,7 @@
 - **Open Source** - Fully open-source and transparent. Licensed under AGPL-3.0, you can inspect, modify, and contribute to the codebase
 - **No API Key Needed** - Works directly with supported AI CLI tools using your personal plan. No extra API keys, no complex setup, no additional costs
 - **Everything Runs Locally** - Your code stays on your machine when using local LLMs. All analysis and fixes happen on your infrastructure. Complete privacy and security with local AI models
-- **MCP Integration** - 18 MCP tools integrated with SonarQube for comprehensive code analysis. Seamlessly integrates with AI assistants that support MCP protocol
+- **MCP Integration** - 20 MCP tools integrated with SonarQube for comprehensive code analysis. Seamlessly integrates with AI assistants that support MCP protocol
 - **One Command Install** - Intelligent installer handles everything automatically. Manages all SonarQube dependencies on Linux and macOS, configures all supported AI CLI tools. Ready in 3-5 minutes
 - **Complete Code Quality** - Automated analysis with multi-language support. Security scanning, quality metrics, code coverage tracking. Continuous monitoring to achieve and maintain ZERO technical debt
 
@@ -128,7 +128,7 @@ Bob the Fixer exposes MCP tools that can be invoked through any compatible MCP c
 
 ## 🛠️ Available MCP Tools
 
-Bob the Fixer exposes 18 MCP tools for comprehensive code analysis:
+Bob the Fixer exposes 20 MCP tools for comprehensive code analysis:
 
 ### Core Analysis
 - **`sonar_scan_project`** - Comprehensive project scanning
@@ -139,8 +139,9 @@ Bob the Fixer exposes 18 MCP tools for comprehensive code analysis:
 ### Advanced Analysis
 - **`sonar_get_security_hotspots`** - Security vulnerability detection
 - **`sonar_get_security_hotspot_details`** - Detailed security analysis
-- **`sonar_get_pattern_analysis`** - Code pattern and smell detection
+- **`sonar_analyze_patterns`** - Code pattern and smell detection
 - **`sonar_get_duplication_summary`** - Duplicate code analysis
+- **`sonar_get_duplication_details`** - Detailed duplication analysis
 - **`sonar_get_technical_debt`** - Technical debt estimation
 - **`sonar_get_project_metrics`** - Project-wide quality metrics
 - **`sonar_get_coverage_gaps`** - Identify uncovered code blocks for test generation
@@ -149,6 +150,7 @@ Bob the Fixer exposes 18 MCP tools for comprehensive code analysis:
 - **`sonar_auto_setup`** - Automatic project configuration
 - **`sonar_link_existing_project`** - Link existing SonarQube project to directory
 - **`sonar_config_manager`** - View/update configuration
+- **`sonar_generate_config`** - Generate sonar-project.properties file
 - **`sonar_cleanup`** - Clean old projects and tokens
 - **`sonar_project_discovery`** - Analyze project structure
 - **`sonar_diagnose_permissions`** - Troubleshoot authentication

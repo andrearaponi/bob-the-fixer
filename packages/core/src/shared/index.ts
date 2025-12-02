@@ -13,6 +13,9 @@ export * from './errors/custom-errors.js';
 export * from './logger/structured-logger.js';
 export * from './logger/mcp-logger.js';
 
+// Version checker
+export * from './version/index.js';
+
 // Validators (exports separately to avoid naming conflicts)
 export {
   validateInput,

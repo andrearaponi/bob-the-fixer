@@ -14,6 +14,7 @@ import {
 } from '../infrastructure/security/input-sanitization.js';
 import { getLogger, StructuredLogger } from '../shared/logger/structured-logger.js';
 import { getMCPLogger, MCPLogger } from '../shared/logger/mcp-logger.js';
+import { initializeVersionChecker, VersionChecker } from '../shared/version/index.js';
 import {
   ToolExecutionError,
   wrapError
@@ -32,6 +33,10 @@ export interface ServerConfig {
   httpConfig?: HTTPTransportConfig;
 }
 
+// Application version - keep in sync with package.json
+const APP_VERSION = '0.3.0';
+const GITHUB_REPOSITORY = 'andrearaponi/bob-the-fixer';
+
 class UniversalBobTheBuilderMCPServer {
   private readonly server: Server;
   private readonly rateLimiter: RateLimiter;
@@ -39,6 +44,7 @@ class UniversalBobTheBuilderMCPServer {
   private readonly mcpLogger: MCPLogger = getMCPLogger();
   private readonly lifecycle: ServerLifecycleManager = getLifecycleManager();
   private readonly config: ServerConfig;
+  private versionChecker?: VersionChecker;
 
   constructor(config: ServerConfig = {}) {
 
@@ -236,6 +242,29 @@ class UniversalBobTheBuilderMCPServer {
   }
 
   /**
+   * Initialize version checker for update notifications
+   */
+  private initializeVersionChecker(): void {
+    this.versionChecker = initializeVersionChecker({
+      currentVersion: APP_VERSION,
+      repository: GITHUB_REPOSITORY,
+      checkIntervalMs: 24 * 60 * 60 * 1000, // 24 hours
+      checkOnInit: true,
+      includePrerelease: false,
+    });
+
+    // Register shutdown handler
+    this.lifecycle.onShutdown(async () => {
+      this.versionChecker?.destroy();
+    });
+
+    // Start the checker (non-blocking)
+    this.versionChecker.start().catch(error => {
+      this.logger.debug('Version checker initialization failed', { error });
+    });
+  }
+
+  /**
    * Setup MCP logging handlers
    */
   private setupLoggingHandlers(): void {
@@ -318,6 +347,9 @@ class UniversalBobTheBuilderMCPServer {
       }).catch(error => {
         this.logger.warn('Initial health check failed', error as Error);
       });
+
+      // Initialize version checker for update notifications
+      this.initializeVersionChecker();
 
 
     } catch (error) {
