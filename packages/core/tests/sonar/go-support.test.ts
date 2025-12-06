@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, vi } from 'vitest';
 import { SonarQubeClient } from '../../src/sonar/client.js';
 import * as path from 'path';
 import * as fs from 'fs/promises';

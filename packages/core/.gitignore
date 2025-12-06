@@ -5,3 +5,5 @@ bobthefixer.env
 # Test coverage
 coverage/
 .vitest/
+# SonarQube local configuration
+sonar-project.properties

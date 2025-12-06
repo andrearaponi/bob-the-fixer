@@ -193,9 +193,12 @@ export class ScanFallbackService {
     if (result.recoverable) {
       lines.push('✅ This error is recoverable with proper configuration.');
       lines.push('');
+      lines.push('📝 **Note:** A `sonar-project.properties` file may have been auto-generated with the attempted parameters.');
+      lines.push('   Check if the file exists and review/correct it based on the error above.');
+      lines.push('');
       lines.push(result.recommendation);
       lines.push('');
-      lines.push('Use `sonar_generate_config` with the appropriate parameters based on the project structure above.');
+      lines.push('If no file was generated, use `sonar_generate_config` with the appropriate parameters.');
     } else {
       lines.push('⚠️ This error may require manual intervention.');
       lines.push(result.recommendation);

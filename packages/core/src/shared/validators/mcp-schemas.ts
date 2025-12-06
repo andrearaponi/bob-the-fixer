@@ -257,6 +257,14 @@ const SonarModuleConfigSchema = z.object({
 export const SonarGenerateConfigSchema = z.object({
   projectPath: SafePathSchema.optional()
     .describe('Project directory path (defaults to current working directory)'),
+  autoDetect: z.boolean()
+    .optional()
+    .default(true)
+    .describe('Automatically detect project properties (sources, binaries, libraries). User-provided values override detected values. Default: true'),
+  libraryPathStrategy: z.enum(['absolute', 'relative', 'glob'])
+    .optional()
+    .default('relative')
+    .describe('How to handle library paths: absolute (keep full paths), relative (convert to project-relative), glob (use patterns). Default: relative'),
   config: z.object({
     projectKey: ProjectKeySchema.optional()
       .describe('SonarQube project key (optional - will use from bobthefixer.env if not provided)'),
@@ -269,8 +277,8 @@ export const SonarGenerateConfigSchema = z.object({
       .optional()
       .describe('Project version'),
     sources: z.string()
-      .min(1, 'Sources cannot be empty')
-      .describe('Comma-separated source directories (e.g., "src,lib")'),
+      .optional()
+      .describe('Comma-separated source directories (e.g., "src,lib"). Auto-detected if not provided'),
     tests: z.string()
       .optional()
       .describe('Comma-separated test directories'),
@@ -287,14 +295,21 @@ export const SonarGenerateConfigSchema = z.object({
     javaBinaries: z.string()
       .optional()
       .describe('Java compiled classes directory (for Java projects)'),
+    javaTestBinaries: z.string()
+      .optional()
+      .describe('Java test compiled classes directory'),
     javaLibraries: z.string()
       .optional()
       .describe('Path to Java libraries'),
+    javaSource: z.string()
+      .optional()
+      .describe('Java source version (e.g., "11", "17")'),
     coverageReportPaths: z.string()
       .optional()
       .describe('Path to coverage report files'),
     additionalProperties: z.record(z.string())
       .optional()
       .describe('Additional SonarQube properties as key-value pairs')
-  }).describe('SonarQube project configuration')
-}).describe('[EN] Generate sonar-project.properties file for SonarQube scanning. Use this after sonar_scan_project fails to create a proper configuration based on project structure.');
+  }).optional()
+    .describe('SonarQube project configuration (optional when autoDetect is true)')
+}).describe('[EN] Generate sonar-project.properties file with auto-detection. Automatically detects project properties; user values override detected ones.');

@@ -444,7 +444,8 @@ describe('ScanOrchestrator', () => {
       });
 
       const orch = new ScanOrchestrator(mockProjectManager, mockSonarAdmin, {
-        enableFallback: true
+        enableFallback: true,
+        retryDelay: 0
       });
 
       try {

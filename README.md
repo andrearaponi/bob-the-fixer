@@ -2,9 +2,9 @@
 
 **Intelligent AI system for code quality & security analysis with SonarQube.** Achieve **ZERO technical debt** through automated analysis, security scanning, and natural language interaction with your AI assistant.
 
-> 🚀 **Release**: v0.3.0 - Version Notification System & 20 MCP tools
+> 🚀 **Release**: v0.3.5 - Version Notification System & 20 MCP tools
 
-![Version](https://img.shields.io/badge/version-0.3.0-blue)
+![Version](https://img.shields.io/badge/version-0.3.5-blue)
 ![License](https://img.shields.io/badge/license-AGPL--3.0-green)
 ![Node](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen)
 ![Container](https://img.shields.io/badge/podman-recommended-blue)

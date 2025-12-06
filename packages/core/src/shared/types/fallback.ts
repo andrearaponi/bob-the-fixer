@@ -97,15 +97,17 @@ export interface SonarPropertiesConfig {
   projectKey: string;
   projectName?: string;
   projectVersion?: string;
-  sources: string;
+  sources?: string;  // Optional when auto-detected
   tests?: string;
   exclusions?: string;
   encoding?: string;
   // Multi-module support
   modules?: SonarModuleConfig[];
-  // Language-specific
+  // Language-specific - Java
   javaBinaries?: string;
+  javaTestBinaries?: string;
   javaLibraries?: string;
+  javaSource?: string;  // Java version (e.g., "11", "17")
   // Coverage
   coverageReportPaths?: string;
   // Additional properties

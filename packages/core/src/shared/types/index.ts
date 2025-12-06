@@ -5,6 +5,9 @@
 // Re-export fallback types
 export * from './fallback.js';
 
+// Re-export validation types
+export * from './validation.js';
+
 // MCP Response types
 export interface MCPResponse {
   content: MCPContent[];
@@ -87,6 +90,20 @@ export interface ScanResult {
     maintainability: number;
     security: number;
   };
+  preScanValidation?: {
+    scanQuality: 'full' | 'partial' | 'degraded';
+    detectedLanguages: string[];
+    warnings: number;
+    configCompleteness?: number;
+    missingCritical: string[];
+    detectedProperties: Array<{
+      key: string;
+      value: string;
+      confidence: 'high' | 'medium' | 'low';
+    }>;
+  };
+  /** How the scan configuration was obtained */
+  configSource?: 'properties-file' | 'auto-detected' | 'cli-params';
 }
 
 export interface Issue {
