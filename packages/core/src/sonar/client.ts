@@ -6,6 +6,8 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { ProjectContext } from '../universal/project-manager';
 import { sanitizeCommandArgs, shellQuote, sanitizeProjectKey, sanitizeUrl, maskToken } from '../infrastructure/security/input-sanitization.js';
+import { PreScanValidator } from '../core/scanning/validation/index.js';
+import { selectScanner, ScannerType, buildMavenCommand, buildGradleCommand, getScannerDescription } from './scanner-selection.js';
 
 const execAsync = promisify(exec);
 
@@ -13,6 +15,12 @@ export class SonarQubeClient {
   public readonly client: AxiosInstance;  // Make public for diagnostic access
   private readonly projectKey: string;
   public readonly projectContext?: ProjectContext;
+
+  /**
+   * Stores the last scanner parameters built during triggerAnalysis.
+   * Used to generate properties file even if scan fails.
+   */
+  private lastBuiltScannerParams: string[] = [];
 
   constructor(
     baseUrl: string,
@@ -60,7 +68,18 @@ export class SonarQubeClient {
     );
   }
 
-  async triggerAnalysis(projectPath: string): Promise<void> {
+  /**
+   * Trigger SonarQube analysis
+   * Automatically selects the best scanner based on project context:
+   * - Maven/Gradle + Java/Kotlin → Native plugin (better analysis)
+   * - Other languages → sonar-scanner CLI
+   *
+   * @returns The scanner parameters used (for writing to properties file)
+   */
+  async triggerAnalysis(
+    projectPath: string,
+    detectedProperties?: Map<string, string>
+  ): Promise<string[]> {
     const lockFile = path.join(projectPath, '.sonar-analysis.lock');
 
     try {
@@ -68,45 +87,91 @@ export class SonarQubeClient {
       await this.acquireLock(lockFile);
 
       // Sanitize project path
-      const safePath = path.resolve(projectPath); // Resolve to absolute path
+      const safePath = path.resolve(projectPath);
 
-      // Check if Java project is compiled
-      await this.checkJavaCompilation(safePath);
+      // Select the best scanner based on project context
+      const scannerType = selectScanner(this.projectContext);
+      console.error(`📊 Scanner selected: ${getScannerDescription(scannerType)}`);
 
-      // Build and sanitize scanner parameters
-      const scannerParams = await this.buildScannerParameters(safePath);
-      const sanitizedParams = sanitizeCommandArgs(scannerParams);
+      // Route to appropriate scanner method
+      switch (scannerType) {
+        case ScannerType.MAVEN:
+          return await this.triggerMavenAnalysis(safePath, detectedProperties);
 
-      // Use array form to prevent command injection
-      const command = 'sonar-scanner';
-      const args = sanitizedParams;
+        case ScannerType.GRADLE:
+          return await this.triggerGradleAnalysis(safePath, detectedProperties);
 
-      console.error(`Running SonarQube analysis: ${command} with ${args.length} parameters`);
-      console.error(`Masked token used: ${maskToken(this.getToken())}`);
-      
-      const { stdout, stderr } = await execAsync(`${command} ${args.map(arg => shellQuote(arg)).join(' ')}`, { 
-        cwd: safePath,
-        maxBuffer: 10 * 1024 * 1024, // 10MB buffer for large outputs
-        timeout: 300000, // 5 minute timeout
-        env: { ...process.env, PATH: process.env.PATH } // Inherit PATH but limit env
-      });
-      
-      console.error('Analysis completed successfully');
-      if (stdout) console.error('Analysis output:', stdout);
-      if (stderr) console.error('Analysis warnings:', stderr);
-      
+        case ScannerType.CLI:
+        default:
+          return await this.triggerCliAnalysis(safePath, detectedProperties);
+      }
+
     } catch (error: any) {
       // Enhanced error handling with specific suggestions
       let errorMessage = `Analysis failed: ${error.message}`;
-      
-      if (error.message.includes('sonar-scanner: not found') || error.message.includes('command not found')) {
+      const scannerType = selectScanner(this.projectContext);
+
+      // Maven-specific error handling
+      if (scannerType === ScannerType.MAVEN) {
+        if (error.message.includes('COMPILATION_ERROR') ||
+            error.message.includes('Cannot find symbol') ||
+            error.message.includes('package does not exist')) {
+          errorMessage += '\n\n🔧 Solution: Maven project needs to be compiled first!\n' +
+                        '  Run: mvn clean compile\n\n' +
+                        '  After compilation, retry the scan.';
+        } else if (error.message.includes('mvn: not found') ||
+                   error.message.includes('mvn: command not found')) {
+          errorMessage += '\n\n🔧 Solution: Maven is not installed.\n' +
+                        '  Install Maven:\n' +
+                        '    - macOS: brew install maven\n' +
+                        '    - Linux: apt-get install maven\n' +
+                        '    - Windows: choco install maven';
+        }
+      }
+      // Gradle-specific error handling
+      else if (scannerType === ScannerType.GRADLE) {
+        if (error.message.includes('compileJava FAILED') ||
+            error.message.includes('Compilation failed') ||
+            error.message.includes('Could not resolve')) {
+          errorMessage += '\n\n🔧 Solution: Gradle project needs to be compiled first!\n' +
+                        '  Run: ./gradlew clean compileJava\n\n' +
+                        '  After compilation, retry the scan.';
+        } else if (error.message.includes('gradlew: not found') ||
+                   error.message.includes('gradlew: command not found') ||
+                   error.message.includes('permission denied') && error.message.includes('gradlew')) {
+          errorMessage += '\n\n🔧 Solution: Gradle wrapper not found or not executable.\n' +
+                        '  Try:\n' +
+                        '    - chmod +x gradlew (make executable)\n' +
+                        '    - gradle wrapper (regenerate wrapper)\n' +
+                        '    - Or install Gradle: brew install gradle';
+        } else if (error.message.includes('sonar') && error.message.includes('not found') ||
+                   error.message.includes('Task') && error.message.includes('sonar')) {
+          errorMessage += '\n\n🔧 Solution: Gradle Sonar plugin not configured.\n' +
+                        '  Unlike Maven, Gradle requires explicit plugin configuration.\n\n' +
+                        '  ⚠️ IMPORTANT: Use WebFetch to get the latest plugin version from:\n' +
+                        '  https://plugins.gradle.org/plugin/org.sonarqube\n\n' +
+                        '  Then add to build.gradle:\n' +
+                        '  plugins {\n' +
+                        '    id "org.sonarqube" version "X.X.X"\n' +
+                        '  }\n\n' +
+                        '  Or for build.gradle.kts:\n' +
+                        '  plugins {\n' +
+                        '    id("org.sonarqube") version "X.X.X"\n' +
+                        '  }';
+        }
+      }
+      // CLI-specific error handling
+      else if (error.message.includes('sonar-scanner: not found') || error.message.includes('command not found')) {
         errorMessage += '\n\n🔧 Solution: Install SonarQube Scanner CLI:\n' +
                       '  - Download from: https://docs.sonarqube.org/latest/analysis/scan/sonarscanner/\n' +
                       '  - Or install via package manager:\n' +
                       '    - macOS: brew install sonar-scanner\n' +
                       '    - Linux: apt-get install sonar-scanner-cli\n' +
                       '    - Windows: choco install sonarscanner-msbuild-net46';
-      } else if (error.message.includes('timeout')) {
+      }
+
+      // Generic error handling (applies to all scanners)
+      if (error.message.includes('timeout')) {
         errorMessage += '\n\n🔧 Solution: The analysis took longer than expected.\n' +
                       '  - For large projects, increase timeout or exclude test files\n' +
                       '  - Check if compilation completed successfully\n' +
@@ -116,23 +181,230 @@ export class SonarQubeClient {
                       '  - Ensure write access to project directory\n' +
                       '  - Check if .sonar directory can be created\n' +
                       '  - Run with appropriate user permissions';
-      } else if (error.message.includes('java') || error.message.includes('Java')) {
-        errorMessage += '\n\n🔧 Solution: Java-related error detected.\n' +
-                      '  - Ensure Java 11 or later is installed and in PATH\n' +
-                      '  - Check JAVA_HOME environment variable\n' +
-                      '  - Verify project compilation was successful';
       } else if (error.message.includes('401') || error.message.includes('403')) {
         errorMessage += '\n\n🔧 Solution: Authentication/Authorization error.\n' +
                       '  - Verify SonarQube token is valid and has project creation permissions\n' +
                       '  - Check if project key already exists with different permissions\n' +
                       '  - Ensure SonarQube server is accessible';
       }
-      
+
       throw new Error(errorMessage);
     } finally {
       // Always release the lock
       await this.releaseLock(lockFile);
     }
+  }
+
+  /**
+   * Trigger analysis using Maven Sonar Plugin (mvn sonar:sonar)
+   * Better for Java/Kotlin projects - full classpath resolution
+   * Falls back to CLI with detected properties if Maven fails
+   */
+  private async triggerMavenAnalysis(
+    projectPath: string,
+    detectedProperties?: Map<string, string>
+  ): Promise<string[]> {
+    console.error('🔧 Using Maven Sonar Plugin for analysis (better classpath resolution)');
+
+    try {
+      // Check if project is compiled before running analysis
+      await this.checkJavaCompilation(projectPath);
+
+      const { command, args } = buildMavenCommand({
+        hostUrl: this.client.defaults.baseURL as string,
+        token: this.getToken(),
+        projectKey: this.projectKey
+      });
+
+      // Store params for properties file generation (if needed on failure)
+      const paramsForFile = args.filter(arg => arg.startsWith('-Dsonar.'));
+      this.lastBuiltScannerParams = paramsForFile;
+
+      const fullCommand = `${command} ${args.map(arg => shellQuote(arg)).join(' ')}`;
+      console.error(`Running: mvn sonar:sonar`);
+      console.error(`Masked token used: ${maskToken(this.getToken())}`);
+
+      const { stdout, stderr } = await execAsync(fullCommand, {
+        cwd: projectPath,
+        maxBuffer: 10 * 1024 * 1024,
+        timeout: 600000, // 10 minutes for Maven (can be slower)
+        env: { ...process.env, PATH: process.env.PATH }
+      });
+
+      console.error('✅ Maven Sonar analysis completed successfully');
+      if (stdout) console.error('Analysis output:', stdout.slice(-500)); // Last 500 chars
+      if (stderr) console.error('Analysis warnings:', stderr.slice(-500));
+
+      return paramsForFile;
+    } catch (mavenError: any) {
+      // If we have detected properties from JavaAnalyzer, fallback to CLI
+      if (detectedProperties && detectedProperties.size > 0) {
+        console.error('⚠️ Maven plugin failed, falling back to CLI with detected properties from JavaAnalyzer');
+        console.error(`   Maven error: ${mavenError.message?.slice(0, 200)}`);
+        return await this.triggerCliWithDetectedParams(projectPath, detectedProperties);
+      }
+
+      // No fallback available - re-throw the original error
+      throw mavenError;
+    }
+  }
+
+  /**
+   * Trigger analysis using Gradle Sonar Plugin (gradle sonar)
+   * Better for Java/Kotlin projects - full classpath resolution
+   * Falls back to CLI with detected properties if Gradle fails
+   */
+  private async triggerGradleAnalysis(
+    projectPath: string,
+    detectedProperties?: Map<string, string>
+  ): Promise<string[]> {
+    console.error('🔧 Using Gradle Sonar Plugin for analysis (better classpath resolution)');
+
+    try {
+      // Check if project is compiled before running analysis
+      await this.checkJavaCompilation(projectPath);
+
+      const { command, args } = buildGradleCommand({
+        hostUrl: this.client.defaults.baseURL as string,
+        token: this.getToken(),
+        projectKey: this.projectKey
+      });
+
+      // Store params for properties file generation (if needed on failure)
+      const paramsForFile = args.filter(arg => arg.startsWith('-Dsonar.'));
+      this.lastBuiltScannerParams = paramsForFile;
+
+      const fullCommand = `${command} ${args.map(arg => shellQuote(arg)).join(' ')}`;
+      console.error(`Running: ./gradlew sonar`);
+      console.error(`Masked token used: ${maskToken(this.getToken())}`);
+
+      const { stdout, stderr } = await execAsync(fullCommand, {
+        cwd: projectPath,
+        maxBuffer: 10 * 1024 * 1024,
+        timeout: 600000, // 10 minutes for Gradle
+        env: { ...process.env, PATH: process.env.PATH }
+      });
+
+      console.error('✅ Gradle Sonar analysis completed successfully');
+      if (stdout) console.error('Analysis output:', stdout.slice(-500));
+      if (stderr) console.error('Analysis warnings:', stderr.slice(-500));
+
+      return paramsForFile;
+    } catch (gradleError: any) {
+      // If we have detected properties from JavaAnalyzer, fallback to CLI
+      if (detectedProperties && detectedProperties.size > 0) {
+        console.error('⚠️ Gradle plugin failed, falling back to CLI with detected properties from JavaAnalyzer');
+        console.error(`   Gradle error: ${gradleError.message?.slice(0, 200)}`);
+        return await this.triggerCliWithDetectedParams(projectPath, detectedProperties);
+      }
+
+      // No fallback available - re-throw the original error
+      throw gradleError;
+    }
+  }
+
+  /**
+   * Trigger analysis using SonarScanner CLI (sonar-scanner)
+   * Used for non-JVM languages or projects without Maven/Gradle
+   * If detectedProperties are provided (from JavaAnalyzer), uses those instead of auto-detection
+   */
+  private async triggerCliAnalysis(
+    projectPath: string,
+    detectedProperties?: Map<string, string>
+  ): Promise<string[]> {
+    // If we have detected properties from JavaAnalyzer, use them
+    if (detectedProperties && detectedProperties.size > 0) {
+      console.error('🔧 Using SonarScanner CLI with JavaAnalyzer-detected properties');
+      return await this.triggerCliWithDetectedParams(projectPath, detectedProperties);
+    }
+
+    // Fallback to legacy auto-detection
+    console.error('🔧 Using SonarScanner CLI for analysis (auto-detection)');
+
+    // Check if Java project is compiled (for Java projects using CLI)
+    await this.checkJavaCompilation(projectPath);
+
+    // Build and sanitize scanner parameters
+    const scannerParams = await this.buildScannerParameters(projectPath);
+    const sanitizedParams = sanitizeCommandArgs(scannerParams);
+
+    // Store params immediately after building
+    this.lastBuiltScannerParams = sanitizedParams;
+
+    const command = 'sonar-scanner';
+    console.error(`Running: ${command} with ${sanitizedParams.length} parameters`);
+    console.error(`Masked token used: ${maskToken(this.getToken())}`);
+
+    const { stdout, stderr } = await execAsync(
+      `${command} ${sanitizedParams.map(arg => shellQuote(arg)).join(' ')}`,
+      {
+        cwd: projectPath,
+        maxBuffer: 10 * 1024 * 1024,
+        timeout: 300000, // 5 minutes
+        env: { ...process.env, PATH: process.env.PATH }
+      }
+    );
+
+    console.error('✅ SonarScanner CLI analysis completed successfully');
+    if (stdout) console.error('Analysis output:', stdout);
+    if (stderr) console.error('Analysis warnings:', stderr);
+
+    return sanitizedParams;
+  }
+
+  /**
+   * Trigger CLI analysis with pre-detected properties from JavaAnalyzer/PreScanValidator
+   * Used when Maven/Gradle fails, or when running CLI with detected properties
+   */
+  private async triggerCliWithDetectedParams(
+    projectPath: string,
+    detectedProperties: Map<string, string>
+  ): Promise<string[]> {
+    // Check if Java project is compiled
+    await this.checkJavaCompilation(projectPath);
+
+    // Build base parameters
+    const params: string[] = [
+      `-Dsonar.projectKey=${this.projectKey}`,
+      `-Dsonar.host.url=${this.client.defaults.baseURL}`,
+      `-Dsonar.login=${this.getToken()}`,
+      `-Dsonar.projectVersion=${Date.now()}`
+    ];
+
+    // Add all detected properties from JavaAnalyzer
+    console.error('📋 Using detected properties from JavaAnalyzer:');
+    for (const [key, value] of detectedProperties) {
+      params.push(`-D${key}=${value}`);
+      // Log key properties (mask sensitive values)
+      if (key.includes('token') || key.includes('login')) {
+        console.error(`   ${key}=****`);
+      } else {
+        console.error(`   ${key}=${value.length > 100 ? value.slice(0, 100) + '...' : value}`);
+      }
+    }
+
+    const sanitizedParams = sanitizeCommandArgs(params);
+    this.lastBuiltScannerParams = sanitizedParams;
+
+    const command = 'sonar-scanner';
+    console.error(`Running: ${command} with ${sanitizedParams.length} parameters (detected)`);
+    console.error(`Masked token used: ${maskToken(this.getToken())}`);
+
+    const { stdout, stderr } = await execAsync(
+      `${command} ${sanitizedParams.map(arg => shellQuote(arg)).join(' ')}`,
+      {
+        cwd: projectPath,
+        maxBuffer: 10 * 1024 * 1024,
+        timeout: 300000, // 5 minutes
+        env: { ...process.env, PATH: process.env.PATH }
+      }
+    );
+
+    console.error('✅ SonarScanner CLI analysis completed successfully (with detected properties)');
+    if (stdout) console.error('Analysis output:', stdout);
+    if (stderr) console.error('Analysis warnings:', stderr);
+
+    return sanitizedParams;
   }
 
   async triggerDotnetAnalysis(projectPath: string): Promise<void> {
@@ -572,6 +844,14 @@ export class SonarQubeClient {
     return auth.replace('Bearer ', '');
   }
 
+  /**
+   * Get the last scanner parameters that were built during triggerAnalysis.
+   * Useful for generating properties file even when scan fails.
+   */
+  getLastBuiltScannerParams(): string[] {
+    return this.lastBuiltScannerParams;
+  }
+
   private sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
@@ -814,13 +1094,52 @@ export class SonarQubeClient {
     const hasPropertiesFile = await this.fileExists(propsFile);
 
     if (hasPropertiesFile) {
-      // Use minimal parameters - the rest comes from the properties file
+      // Use minimal parameters + validate and augment with missing critical properties
       console.error('📄 Using sonar-project.properties file for configuration');
-      return [
+
+      const params = [
         `-Dsonar.host.url=${this.client.defaults.baseURL}`,
         `-Dsonar.login=${this.getToken()}`,
         `-Dsonar.projectVersion=${Date.now()}`
       ];
+
+      // Run universal pre-scan validation to detect missing properties
+      try {
+        const preScanValidator = new PreScanValidator();
+        const validationResult = await preScanValidator.validate(projectPath);
+
+        // Add missing critical properties from detection (not in existing config)
+        if (validationResult.existingConfig) {
+          const missingCritical = validationResult.existingConfig.missingCritical;
+
+          for (const missing of missingCritical) {
+            const detected = validationResult.detectedProperties.find(p => p.key === missing);
+            if (detected) {
+              params.push(`-D${missing}=${detected.value}`);
+              console.error(`  ➕ Adding missing critical: ${missing}=${detected.value}`);
+            }
+          }
+
+          // Log suggestions for recommended properties
+          const missingRecommended = validationResult.existingConfig.missingRecommended;
+          if (missingRecommended.length > 0) {
+            console.error('\n📝 Recommended additions to sonar-project.properties:');
+            for (const rec of missingRecommended) {
+              const detected = validationResult.detectedProperties.find(p => p.key === rec);
+              if (detected) {
+                console.error(`    ${rec}=${detected.value}`);
+              }
+            }
+          }
+
+          console.error(`\n📊 Config completeness: ${validationResult.existingConfig.completenessScore}%`);
+        }
+      } catch (error) {
+        // Validation failed - continue with minimal params (best-effort)
+        console.error(`  ⚠️ Pre-scan validation skipped: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+
+      return params;
     }
 
     const params = [
@@ -971,6 +1290,35 @@ export class SonarQubeClient {
 
     // Add Maven dependencies (libraries)
     await this.addMavenLibraries(params, projectPath);
+
+    // Add JaCoCo coverage report paths if they exist
+    await this.addJacocoCoverageParams(params, projectPath);
+  }
+
+  /**
+   * Add JaCoCo coverage report paths for Maven/Gradle projects
+   */
+  private async addJacocoCoverageParams(params: string[], projectPath: string): Promise<void> {
+    // Common JaCoCo report paths to check
+    const jacocoPaths = [
+      'target/site/jacoco/jacoco.xml',
+      'target/jacoco-report/jacoco.xml',
+      'target/jacoco/jacoco.xml',
+      'build/reports/jacoco/test/jacocoTestReport.xml',
+      'build/jacoco/test.xml'
+    ];
+
+    const foundPaths: string[] = [];
+    for (const jacocoPath of jacocoPaths) {
+      if (await this.fileExists(path.join(projectPath, jacocoPath))) {
+        foundPaths.push(jacocoPath);
+      }
+    }
+
+    if (foundPaths.length > 0) {
+      params.push(`-Dsonar.coverage.jacoco.xmlReportPaths=${foundPaths.join(',')}`);
+      console.error(`📊 Found JaCoCo reports: ${foundPaths.join(', ')}`);
+    }
   }
 
   /**
@@ -1005,6 +1353,9 @@ export class SonarQubeClient {
 
     // Add Gradle dependencies (libraries)
     await this.addGradleLibraries(params, projectPath);
+
+    // Add JaCoCo coverage report paths if they exist
+    await this.addJacocoCoverageParams(params, projectPath);
   }
 
   /**

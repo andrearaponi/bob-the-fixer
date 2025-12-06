@@ -8,7 +8,7 @@ export interface MCPLogMessage {
   [key: string]: unknown;
   level: MCPLogLevel;
   logger: string;
-  data?: Record<string, any>;
+  data: Record<string, unknown>;
 }
 
 export interface MCPLoggerConfig {
@@ -92,28 +92,28 @@ export class MCPLogger {
   /**
    * Emergency: System is unusable
    */
-  emergency(logger: string, message: string, data?: Record<string, any>): void {
+  emergency(logger: string, message: string, data?: Record<string, unknown>): void {
     void this.log('emergency', logger, message, data);
   }
 
   /**
    * Alert: Immediate action required
    */
-  alert(logger: string, message: string, data?: Record<string, any>): void {
+  alert(logger: string, message: string, data?: Record<string, unknown>): void {
     void this.log('alert', logger, message, data);
   }
 
   /**
    * Critical: System component failures
    */
-  critical(logger: string, message: string, data?: Record<string, any>): void {
+  critical(logger: string, message: string, data?: Record<string, unknown>): void {
     void this.log('critical', logger, message, data);
   }
 
   /**
    * Error: Operation failures
    */
-  error(logger: string, message: string, error?: Error, data?: Record<string, any>): void {
+  error(logger: string, message: string, error?: Error, data?: Record<string, unknown>): void {
     const errorData = error ? {
       error: {
         name: error.name,
@@ -129,35 +129,35 @@ export class MCPLogger {
   /**
    * Warning: Deprecated feature usage
    */
-  warning(logger: string, message: string, data?: Record<string, any>): void {
+  warning(logger: string, message: string, data?: Record<string, unknown>): void {
     void this.log('warning', logger, message, data);
   }
 
   /**
    * Notice: Normal significant events
    */
-  notice(logger: string, message: string, data?: Record<string, any>): void {
+  notice(logger: string, message: string, data?: Record<string, unknown>): void {
     void this.log('notice', logger, message, data);
   }
 
   /**
    * Info: Operation progress updates
    */
-  info(logger: string, message: string, data?: Record<string, any>): void {
+  info(logger: string, message: string, data?: Record<string, unknown>): void {
     void this.log('info', logger, message, data);
   }
 
   /**
    * Debug: Detailed debugging information
    */
-  debug(logger: string, message: string, data?: Record<string, any>): void {
+  debug(logger: string, message: string, data?: Record<string, unknown>): void {
     void this.log('debug', logger, message, data);
   }
 
   /**
    * Log MCP tool invocation
    */
-  toolInvoked(toolName: string, correlationId?: string, context?: Record<string, any>): void {
+  toolInvoked(toolName: string, correlationId?: string, context?: Record<string, unknown>): void {
     this.info('mcp-tools', `Tool invoked: ${toolName}`, {
       tool: toolName,
       correlationId,
@@ -181,7 +181,7 @@ export class MCPLogger {
   /**
    * Log security event
    */
-  security(event: string, severity: 'low' | 'medium' | 'high' | 'critical', context?: Record<string, any>): void {
+  security(event: string, severity: 'low' | 'medium' | 'high' | 'critical', context?: Record<string, unknown>): void {
     const level: MCPLogLevel = severity === 'critical' ? 'critical' : 'warning';
     void this.log(level, 'security', `Security event: ${event}`, {
       security: { event, severity },
@@ -192,7 +192,7 @@ export class MCPLogger {
   /**
    * Core logging method
    */
-  private async log(level: MCPLogLevel, logger: string, message: string, data?: Record<string, any>): Promise<void> {
+  private async log(level: MCPLogLevel, logger: string, message: string, data?: Record<string, unknown>): Promise<void> {
     // Check if we should log at this level
     if (this.levelPriority[level] > this.levelPriority[this.currentLevel]) {
       return;
@@ -289,10 +289,10 @@ export class MCPLogger {
   /**
    * Sanitize context data for safe logging
    */
-  private sanitizeContext(context?: Record<string, any>): Record<string, any> | undefined {
+  private sanitizeContext(context?: Record<string, unknown>): Record<string, unknown> | undefined {
     if (!context) return undefined;
     
-    const sanitized: Record<string, any> = {};
+    const sanitized: Record<string, unknown> = {};
     
     for (const [key, value] of Object.entries(context)) {
       // Sanitize sensitive keys
@@ -303,7 +303,7 @@ export class MCPLogger {
       } else if (typeof value === 'string') {
         sanitized[key] = sanitizeLogMessage(value);
       } else if (typeof value === 'object' && value !== null) {
-        sanitized[key] = this.sanitizeContext(value);
+        sanitized[key] = this.sanitizeContext(value as Record<string, unknown>);
       } else {
         sanitized[key] = value;
       }

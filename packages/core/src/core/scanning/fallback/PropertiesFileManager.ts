@@ -119,12 +119,23 @@ export class PropertiesFileManager {
       lines.push('');
 
       // Java-specific
-      if (config.javaBinaries) {
+      if (config.javaBinaries || config.javaSource) {
         lines.push('# Java configuration');
-        lines.push(`sonar.java.binaries=${config.javaBinaries}`);
+
+        if (config.javaBinaries) {
+          lines.push(`sonar.java.binaries=${config.javaBinaries}`);
+        }
+
+        if (config.javaTestBinaries) {
+          lines.push(`sonar.java.test.binaries=${config.javaTestBinaries}`);
+        }
 
         if (config.javaLibraries) {
           lines.push(`sonar.java.libraries=${config.javaLibraries}`);
+        }
+
+        if (config.javaSource) {
+          lines.push(`sonar.java.source=${config.javaSource}`);
         }
 
         lines.push('');

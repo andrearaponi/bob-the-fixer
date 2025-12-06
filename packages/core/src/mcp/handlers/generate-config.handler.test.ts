@@ -23,6 +23,28 @@ vi.mock('../../infrastructure/security/input-sanitization', () => ({
   sanitizePath: vi.fn((path: string) => path)
 }));
 
+// Mock PreScanValidator for auto-detection
+const mockValidationResult = {
+  languages: [{ language: 'java', buildTool: 'maven', version: '17', modules: [], warnings: [] }],
+  detectedProperties: [
+    { key: 'sonar.sources', value: 'src/main/java', confidence: 'high', source: 'detected' },
+    { key: 'sonar.java.binaries', value: 'target/classes', confidence: 'high', source: 'detected' }
+  ],
+  missingCritical: [],
+  missingRecommended: [],
+  warnings: [],
+  scanQuality: 'full',
+  canProceed: true
+};
+
+vi.mock('../../core/scanning/validation/PreScanValidator', () => ({
+  PreScanValidator: vi.fn(function() {
+    return {
+      validate: vi.fn().mockResolvedValue(mockValidationResult)
+    };
+  })
+}));
+
 describe('handleGenerateConfig', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -288,16 +310,67 @@ describe('handleGenerateConfig', () => {
   });
 
   describe('validation', () => {
-    it('should reject empty sources', async () => {
-      await expect(handleGenerateConfig({
+    it('should use auto-detected sources when sources is empty', async () => {
+      // With autoDetect=true (default), empty sources will use auto-detected value
+      const result = await handleGenerateConfig({
         config: {
           sources: ''
         }
-      })).rejects.toThrow();
+      });
+
+      // Should use auto-detected sources
+      expect(result.content[0].text).toContain('sonar.sources=src/main/java');
     });
 
-    it('should reject missing config', async () => {
-      await expect(handleGenerateConfig({})).rejects.toThrow();
+    it('should work without config when autoDetect is true', async () => {
+      // With autoDetect=true (default), config is optional
+      const result = await handleGenerateConfig({});
+
+      expect(result.content[0].text).toContain('✅ sonar-project.properties generated successfully');
+      expect(result.content[0].text).toContain('Auto-Detection Summary');
+    });
+
+    it('should use default sources when autoDetect is false and no sources provided', async () => {
+      const result = await handleGenerateConfig({
+        autoDetect: false,
+        config: {}
+      });
+
+      // Should fall back to default 'src'
+      expect(result.content[0].text).toContain('sonar.sources=src');
+    });
+  });
+
+  describe('auto-detection', () => {
+    it('should show auto-detection summary', async () => {
+      const result = await handleGenerateConfig({});
+
+      expect(result.content[0].text).toContain('## Auto-Detection Summary');
+      expect(result.content[0].text).toContain('Languages: java (maven)');
+      expect(result.content[0].text).toContain('Properties detected:');
+    });
+
+    it('should allow user overrides of detected values', async () => {
+      const result = await handleGenerateConfig({
+        config: {
+          sources: 'custom/src'  // Override detected value
+        }
+      });
+
+      expect(result.content[0].text).toContain('sonar.sources=custom/src');
+      expect(result.content[0].text).toContain('User overrides applied:');
+    });
+
+    it('should skip auto-detection when autoDetect is false', async () => {
+      const result = await handleGenerateConfig({
+        autoDetect: false,
+        config: {
+          sources: 'manual/src'
+        }
+      });
+
+      expect(result.content[0].text).toContain('sonar.sources=manual/src');
+      expect(result.content[0].text).not.toContain('## Auto-Detection Summary');
     });
   });
 

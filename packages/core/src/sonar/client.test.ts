@@ -27,6 +27,8 @@ vi.mock('fs/promises', () => ({
   unlink: vi.fn(() => Promise.resolve()),
   readFile: vi.fn(() => Promise.resolve('')),
   stat: vi.fn(() => Promise.resolve({})),
+  readdir: vi.fn(() => Promise.resolve([])),
+  access: vi.fn(() => Promise.resolve()),
 }));
 
 // Mock child_process
@@ -1125,6 +1127,246 @@ describe('SonarQubeClient', () => {
       await expect(Promise.all(requests)).resolves.toHaveLength(5);
       // Each getIssues() call makes 2 API calls internally (issues + analysis date check)
       expect(mockAxiosInstance.get).toHaveBeenCalledTimes(10);
+    });
+  });
+
+  describe('triggerAnalysis with detected properties', () => {
+    beforeEach(() => {
+      (fs.writeFile as any) = vi.fn(async () => undefined);
+      (fs.unlink as any) = vi.fn(async () => undefined);
+      (fs.stat as any) = vi.fn(async () => { throw { code: 'ENOENT' }; }); // No target directory
+    });
+
+    it('should pass detected properties to triggerAnalysis', async () => {
+      // Create client with TypeScript project context (CLI scanner)
+      client = new SonarQubeClient(
+        'http://localhost:9000',
+        'test-token',
+        'test-project',
+        {
+          name: 'test-project',
+          path: '/test',
+          language: ['typescript'],
+          buildTool: 'npm'
+        }
+      );
+
+      const { exec } = await import('child_process');
+      let executedCommand = '';
+      (exec as any).mockImplementation((cmd: string, options: any, callback: any) => {
+        executedCommand = cmd;
+        callback(null, { stdout: 'Success', stderr: '' });
+      });
+
+      const detectedProperties = new Map<string, string>();
+      detectedProperties.set('sonar.sources', 'src');
+      detectedProperties.set('sonar.tests', 'tests');
+
+      await client.triggerAnalysis('/test/project', detectedProperties);
+
+      // Should use detected properties in command
+      expect(executedCommand).toContain('-Dsonar.sources=src');
+      expect(executedCommand).toContain('-Dsonar.tests=tests');
+    });
+
+    it('should fallback to auto-detection when no detected properties', async () => {
+      client = new SonarQubeClient(
+        'http://localhost:9000',
+        'test-token',
+        'test-project',
+        {
+          name: 'test-project',
+          path: '/test',
+          language: ['typescript'],
+          buildTool: 'npm'
+        }
+      );
+
+      const { exec } = await import('child_process');
+      let executedCommand = '';
+      (exec as any).mockImplementation((cmd: string, options: any, callback: any) => {
+        executedCommand = cmd;
+        callback(null, { stdout: 'Success', stderr: '' });
+      });
+
+      // Call without detected properties
+      await client.triggerAnalysis('/test/project');
+
+      // Should still execute sonar-scanner (auto-detection mode)
+      expect(executedCommand).toContain('sonar-scanner');
+      // Should include host URL and token (projectKey may be added elsewhere)
+      expect(executedCommand).toContain('-Dsonar.host.url=');
+      expect(executedCommand).toContain('-Dsonar.login=');
+    });
+
+    it('should use detected properties over auto-detected', async () => {
+      client = new SonarQubeClient(
+        'http://localhost:9000',
+        'test-token',
+        'test-project',
+        {
+          name: 'test-project',
+          path: '/test',
+          language: ['typescript'],
+          buildTool: 'npm'
+        }
+      );
+
+      const { exec } = await import('child_process');
+      let executedCommand = '';
+      (exec as any).mockImplementation((cmd: string, options: any, callback: any) => {
+        executedCommand = cmd;
+        callback(null, { stdout: 'Success', stderr: '' });
+      });
+
+      // Detected properties from JavaAnalyzer
+      const detectedProperties = new Map<string, string>();
+      detectedProperties.set('sonar.java.binaries', 'target/classes');
+      detectedProperties.set('sonar.java.libraries', '/path/to/libs/*');
+
+      await client.triggerAnalysis('/test/project', detectedProperties);
+
+      // Should use JavaAnalyzer detected values
+      expect(executedCommand).toContain('-Dsonar.java.binaries=target/classes');
+      expect(executedCommand).toContain('-Dsonar.java.libraries=/path/to/libs/*');
+    });
+  });
+
+  describe('Maven/Gradle fallback to CLI', () => {
+    beforeEach(() => {
+      (fs.writeFile as any) = vi.fn(async () => undefined);
+      (fs.unlink as any) = vi.fn(async () => undefined);
+    });
+
+    it('should fallback to CLI when Maven fails with detected properties', async () => {
+      // Create client with Maven project context
+      client = new SonarQubeClient(
+        'http://localhost:9000',
+        'test-token',
+        'test-project',
+        {
+          name: 'test-project',
+          path: '/test',
+          language: ['java'],
+          buildTool: 'maven'
+        }
+      );
+
+      // Simulate compiled Java project - stat returns success for binary dirs
+      (fs.stat as any) = vi.fn(async (path: string) => {
+        // Accept target/classes paths (compilation check)
+        if (path.includes('target/classes') || path.includes('target')) {
+          return { isDirectory: () => true };
+        }
+        // Fail for other paths (like sonar-project.properties)
+        const error: any = new Error('ENOENT');
+        error.code = 'ENOENT';
+        throw error;
+      });
+
+      const { exec } = await import('child_process');
+      let execCallCount = 0;
+      let lastCommand = '';
+      (exec as any).mockImplementation((cmd: string, options: any, callback: any) => {
+        execCallCount++;
+        lastCommand = cmd;
+        if (cmd.includes('mvn')) {
+          // Maven fails
+          callback(new Error('Maven plugin not configured'), null, null);
+        } else if (cmd.includes('sonar-scanner')) {
+          // CLI succeeds
+          callback(null, { stdout: 'Success', stderr: '' });
+        }
+      });
+
+      const detectedProperties = new Map<string, string>();
+      detectedProperties.set('sonar.java.binaries', 'target/classes');
+
+      await client.triggerAnalysis('/test/project', detectedProperties);
+
+      // Should have tried Maven first, then fallback to CLI
+      expect(execCallCount).toBeGreaterThanOrEqual(2);
+      expect(lastCommand).toContain('sonar-scanner');
+      expect(lastCommand).toContain('-Dsonar.java.binaries=target/classes');
+    });
+
+    it('should throw when Maven fails and no detected properties for fallback', async () => {
+      client = new SonarQubeClient(
+        'http://localhost:9000',
+        'test-token',
+        'test-project',
+        {
+          name: 'test-project',
+          path: '/test',
+          language: ['java'],
+          buildTool: 'maven'
+        }
+      );
+
+      // Simulate compiled Java project
+      (fs.stat as any) = vi.fn(async (path: string) => {
+        if (path.includes('target/classes') || path.includes('target')) {
+          return { isDirectory: () => true };
+        }
+        const error: any = new Error('ENOENT');
+        error.code = 'ENOENT';
+        throw error;
+      });
+
+      const { exec } = await import('child_process');
+      (exec as any).mockImplementation((cmd: string, options: any, callback: any) => {
+        if (cmd.includes('mvn')) {
+          callback(new Error('Maven plugin not configured'), null, null);
+        }
+      });
+
+      // No detected properties - should throw Maven error (after compilation check passes)
+      await expect(
+        client.triggerAnalysis('/test/project')
+      ).rejects.toThrow('Maven plugin not configured');
+    });
+
+    it('should fallback to CLI when Gradle fails with detected properties', async () => {
+      client = new SonarQubeClient(
+        'http://localhost:9000',
+        'test-token',
+        'test-project',
+        {
+          name: 'test-project',
+          path: '/test',
+          language: ['java'],
+          buildTool: 'gradle'
+        }
+      );
+
+      // Simulate compiled Java project
+      (fs.stat as any) = vi.fn(async (path: string) => {
+        if (path.includes('build/classes') || path.includes('build')) {
+          return { isDirectory: () => true };
+        }
+        const error: any = new Error('ENOENT');
+        error.code = 'ENOENT';
+        throw error;
+      });
+
+      const { exec } = await import('child_process');
+      let lastCommand = '';
+      (exec as any).mockImplementation((cmd: string, options: any, callback: any) => {
+        lastCommand = cmd;
+        if (cmd.includes('gradlew')) {
+          callback(new Error('Task sonar not found'), null, null);
+        } else if (cmd.includes('sonar-scanner')) {
+          callback(null, { stdout: 'Success', stderr: '' });
+        }
+      });
+
+      const detectedProperties = new Map<string, string>();
+      detectedProperties.set('sonar.java.binaries', 'build/classes/java/main');
+
+      await client.triggerAnalysis('/test/project', detectedProperties);
+
+      expect(lastCommand).toContain('sonar-scanner');
+      expect(lastCommand).toContain('-Dsonar.java.binaries=build/classes/java/main');
     });
   });
 });

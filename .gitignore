@@ -97,3 +97,5 @@ sonarguard.env*
 *.zip
 # Bob the Fixer local configuration
 bobthefixer.env
+# SonarQube local configuration
+sonar-project.properties

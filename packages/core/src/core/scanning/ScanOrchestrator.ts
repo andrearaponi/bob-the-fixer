@@ -4,12 +4,15 @@
  */
 
 import { SonarQubeClient, waitForCacheRefresh } from '../../sonar/index.js';
+import { selectScanner, ScannerType } from '../../sonar/scanner-selection.js';
 import { ProjectManager, ProjectConfig } from '../../universal/project-manager.js';
 import { SonarAdmin } from '../../universal/sonar-admin.js';
 import { getLogger, StructuredLogger } from '../../shared/logger/structured-logger.js';
 import { sanitizePath } from '../../infrastructure/security/input-sanitization.js';
-import { ScanParams, ScanResult, Issue, ProjectContext, FallbackAnalysisResult } from '../../shared/types/index.js';
-import { ScanFallbackService } from './fallback/index.js';
+import { ScanParams, ScanResult, Issue, ProjectContext, FallbackAnalysisResult, PreScanValidationResult, SonarPropertiesConfig } from '../../shared/types/index.js';
+import { ScanFallbackService, PropertiesFileManager } from './fallback/index.js';
+import { PreScanValidator } from './validation/index.js';
+import { processLibraryPaths } from './utils/path-utils.js';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 
@@ -74,6 +77,14 @@ export class ScanOrchestrator {
     // 4. Get project context
     const projectContext = await this.projectManager.analyzeProject();
 
+    // 4.5 Run universal pre-scan validation (best-effort, doesn't block)
+    const preScanValidator = new PreScanValidator();
+    const validationResult = await this.runPreScanValidation(
+      preScanValidator,
+      this.projectManager.getWorkingDirectory(),
+      correlationId
+    );
+
     // 5. Create SonarQube client
     const sonarClient = new SonarQubeClient(
       config.sonarUrl,
@@ -82,8 +93,24 @@ export class ScanOrchestrator {
       projectContext
     );
 
-    // 6. Execute analysis with retry logic
-    await this.executeAnalysisWithRetry(sonarClient, config, correlationId);
+    // 6. Execute analysis with retry logic - capture the exact parameters used
+    // Pass validation result to enable intelligent fallback with detected properties
+    const projectPath = this.projectManager.getWorkingDirectory();
+    const usedScannerParams = await this.executeAnalysisWithRetry(sonarClient, config, validationResult, correlationId);
+
+    // 6.5 Auto-generate properties file with EXACT scanner parameters
+    // Skip for Maven/Gradle - they don't need sonar-project.properties
+    const propertiesFileExists = validationResult?.existingConfig?.exists ?? false;
+    const scannerType = selectScanner(projectContext);
+    const usesBuildToolPlugin = scannerType === ScannerType.MAVEN || scannerType === ScannerType.GRADLE;
+
+    if (!propertiesFileExists && !usesBuildToolPlugin && usedScannerParams && usedScannerParams.length > 0) {
+      await this.autoGeneratePropertiesFileFromParams(
+        projectPath,
+        usedScannerParams,
+        correlationId
+      );
+    }
 
     // 7. Fetch and filter results
     const issues = await this.fetchIssuesWithFilters(
@@ -99,7 +126,53 @@ export class ScanOrchestrator {
     const projectMetrics = await this.fetchProjectMetrics(sonarClient);
 
     // 8. Build and return scan result
-    return this.buildScanResult(config, issues, securityHotspots, projectContext, projectMetrics);
+    return this.buildScanResult(config, issues, securityHotspots, projectContext, projectMetrics, validationResult);
+  }
+
+  /**
+   * Run pre-scan validation (best-effort, doesn't block scan)
+   */
+  private async runPreScanValidation(
+    validator: PreScanValidator,
+    projectPath: string,
+    correlationId?: string
+  ): Promise<PreScanValidationResult | undefined> {
+    try {
+      const result = await validator.validate(projectPath);
+
+      // Log detected languages
+      if (result.languages.length > 0) {
+        const langs = result.languages.map(l => l.buildTool || 'unknown').join(', ');
+        this.logger.info(`Pre-scan detected languages: ${langs}`, { languages: result.languages.length }, correlationId);
+      }
+
+      // Log warnings (but continue with scan)
+      for (const warning of result.warnings) {
+        if (warning.severity === 'error') {
+          this.logger.error(`Pre-scan: ${warning.message}`, undefined, { code: warning.code, suggestion: warning.suggestion }, correlationId);
+        } else {
+          this.logger.warn(`Pre-scan: ${warning.message}`, { code: warning.code, suggestion: warning.suggestion }, correlationId);
+        }
+      }
+
+      // Log scan quality
+      if (result.scanQuality !== 'full') {
+        console.error(`⚠️  Pre-scan quality: ${result.scanQuality.toUpperCase()} (scan will proceed)`);
+      }
+
+      // Log config analysis if existing config found
+      if (result.existingConfig?.exists) {
+        console.error(`📋 Existing sonar-project.properties completeness: ${result.existingConfig.completenessScore}%`);
+        if (result.existingConfig.missingCritical.length > 0) {
+          console.error(`   Missing critical: ${result.existingConfig.missingCritical.join(', ')}`);
+        }
+      }
+
+      return result;
+    } catch (error) {
+      this.logger.warn(`Pre-scan validation failed (continuing anyway): ${error instanceof Error ? error.message : 'Unknown error'}`, {}, correlationId);
+      return undefined;
+    }
   }
 
   /**
@@ -200,22 +273,30 @@ export class ScanOrchestrator {
 
   /**
    * Execute analysis with retry logic for permission issues
+   * @returns The scanner parameters used (for writing to properties file)
    */
   private async executeAnalysisWithRetry(
     sonarClient: SonarQubeClient,
     config: ProjectConfig,
+    validationResult?: PreScanValidationResult,
     correlationId?: string
-  ): Promise<void> {
+  ): Promise<string[]> {
+    // Extract detected properties from validation result for CLI fallback
+    const detectedProperties = this.extractDetectedProperties(validationResult);
+
     for (let attempt = 1; attempt <= this.options.maxRetries; attempt++) {
       try {
-        await this.runAnalysisCycle(sonarClient, attempt);
-        return; // Success
+        const usedParams = await this.runAnalysisCycle(sonarClient, attempt, detectedProperties);
+        return usedParams; // Success - return params
       } catch (error: any) {
         if (this.shouldRetryAnalysis(error, attempt)) {
           this.logger.warn(`⏳ Retrying in ${this.options.retryDelay / 1000} seconds (timing/permission issue)...`, {}, correlationId);
           await new Promise(resolve => setTimeout(resolve, this.options.retryDelay));
           continue;
         }
+
+        // Try to generate properties file even on failure (if params were built)
+        await this.tryGeneratePropertiesOnFailure(sonarClient, correlationId);
 
         // Check if this is a recoverable error and fallback is enabled
         if (this.options.enableFallback && this.isRecoverableConfigError(error)) {
@@ -228,6 +309,57 @@ export class ScanOrchestrator {
 
         throw new Error(this.buildAnalysisErrorMessage(error, attempt, config));
       }
+    }
+    return []; // Should never reach here
+  }
+
+  /**
+   * Try to generate properties file even when scan fails.
+   * This gives the user a starting point to correct and retry.
+   * Skip for Maven/Gradle projects - they don't need sonar-project.properties
+   */
+  private async tryGeneratePropertiesOnFailure(
+    sonarClient: SonarQubeClient,
+    correlationId?: string
+  ): Promise<void> {
+    try {
+      // Skip for Maven/Gradle - they don't need sonar-project.properties
+      const scannerType = selectScanner(sonarClient.projectContext);
+      if (scannerType === ScannerType.MAVEN || scannerType === ScannerType.GRADLE) {
+        this.logger.debug('Skipping properties file generation for Maven/Gradle project', {}, correlationId);
+        return;
+      }
+
+      const projectPath = this.projectManager.getWorkingDirectory();
+      const propertiesPath = path.join(projectPath, 'sonar-project.properties');
+
+      // Check if file already exists
+      try {
+        await fs.access(propertiesPath);
+        // File exists, don't overwrite
+        return;
+      } catch {
+        // File doesn't exist, proceed
+      }
+
+      // Get the parameters that were built before the failure
+      const partialParams = sonarClient.getLastBuiltScannerParams();
+
+      if (partialParams && partialParams.length > 0) {
+        await this.autoGeneratePropertiesFileFromParams(projectPath, partialParams, correlationId);
+        this.logger.info(
+          '📝 Properties file generated despite scan failure - review and correct it',
+          {},
+          correlationId
+        );
+      }
+    } catch (genError) {
+      // Don't fail the main error flow if generation fails
+      this.logger.debug(
+        `Could not generate properties file on failure: ${genError instanceof Error ? genError.message : 'Unknown'}`,
+        {},
+        correlationId
+      );
     }
   }
 
@@ -268,19 +400,29 @@ export class ScanOrchestrator {
 
   /**
    * Run a single analysis cycle
+   * @param sonarClient The SonarQube client
+   * @param attempt Current attempt number
+   * @param detectedProperties Properties detected by JavaAnalyzer for CLI fallback
+   * @returns The scanner parameters used (for writing to properties file)
    */
   private async runAnalysisCycle(
     sonarClient: SonarQubeClient,
-    attempt: number
-  ): Promise<void> {
+    attempt: number,
+    detectedProperties?: Map<string, string>
+  ): Promise<string[]> {
     console.error(`🔍 Starting SonarQube analysis (attempt ${attempt}/${this.options.maxRetries})...`);
 
+    let usedParams: string[] = [];
     if (sonarClient.projectContext?.buildTool === 'dotnet') {
       await sonarClient.triggerDotnetAnalysis(this.projectManager.getWorkingDirectory());
     } else {
-      await sonarClient.triggerAnalysis(this.projectManager.getWorkingDirectory());
+      // Pass detected properties for Maven/Gradle fallback or CLI with smart params
+      usedParams = await sonarClient.triggerAnalysis(
+        this.projectManager.getWorkingDirectory(),
+        detectedProperties
+      );
     }
-    
+
     console.error('✅ Analysis triggered successfully');
 
     console.error('⏳ Waiting for analysis to complete...');
@@ -290,6 +432,8 @@ export class ScanOrchestrator {
     console.error('⏳ Waiting for issue cache refresh...');
     await waitForCacheRefresh(sonarClient);
     console.error('✅ Cache refresh verified');
+
+    return usedParams;
   }
 
   /**
@@ -380,6 +524,29 @@ export class ScanOrchestrator {
   }
 
   /**
+   * Extract detected properties from validation result as a Map
+   * Used to pass JavaAnalyzer-detected properties to CLI for intelligent scanning
+   */
+  private extractDetectedProperties(
+    validationResult?: PreScanValidationResult
+  ): Map<string, string> | undefined {
+    if (!validationResult?.detectedProperties || validationResult.detectedProperties.length === 0) {
+      return undefined;
+    }
+
+    const propsMap = new Map<string, string>();
+    for (const prop of validationResult.detectedProperties) {
+      propsMap.set(prop.key, prop.value);
+    }
+
+    if (propsMap.size > 0) {
+      console.error(`📋 Extracted ${propsMap.size} properties from JavaAnalyzer for potential CLI fallback`);
+    }
+
+    return propsMap.size > 0 ? propsMap : undefined;
+  }
+
+  /**
    * Build scan result from issues
    */
   private buildScanResult(
@@ -387,7 +554,8 @@ export class ScanOrchestrator {
     issues: any[],
     hotspots: any[],
     projectContext: ProjectContext,
-    projectMetrics?: any
+    projectMetrics?: any,
+    validationResult?: PreScanValidationResult
   ): ScanResult {
     const issuesBySeverity: Record<string, number> = {};
     const issuesByType: Record<string, number> = {};
@@ -462,6 +630,14 @@ export class ScanOrchestrator {
       };
     }
 
+    // Determine config source
+    let configSource: 'properties-file' | 'auto-detected' | 'cli-params' = 'cli-params';
+    if (validationResult?.existingConfig?.exists) {
+      configSource = 'properties-file';
+    } else if (validationResult?.detectedProperties && validationResult.detectedProperties.length > 0) {
+      configSource = 'auto-detected';
+    }
+
     return {
       projectKey: config.sonarProjectKey,
       totalIssues: issues.length,
@@ -471,8 +647,105 @@ export class ScanOrchestrator {
       topIssues,
       projectContext,
       securityHotspots: securityHotspotsData,
-      cleanCodeMetrics
+      cleanCodeMetrics,
+      preScanValidation: validationResult ? {
+        scanQuality: validationResult.scanQuality,
+        detectedLanguages: validationResult.languages.map(l => l.buildTool || 'unknown'),
+        warnings: validationResult.warnings.length,
+        configCompleteness: validationResult.existingConfig?.completenessScore,
+        missingCritical: validationResult.existingConfig?.missingCritical || [],
+        detectedProperties: validationResult.detectedProperties.map(p => ({
+          key: p.key,
+          value: p.value,
+          confidence: p.confidence
+        }))
+      } : undefined,
+      configSource
     };
+  }
+
+  /**
+   * Auto-generate sonar-project.properties from EXACT scanner parameters
+   * This ensures the properties file matches exactly what the scanner used
+   */
+  private async autoGeneratePropertiesFileFromParams(
+    projectPath: string,
+    scannerParams: string[],
+    correlationId?: string
+  ): Promise<void> {
+    try {
+      this.logger.info('Auto-generating sonar-project.properties from scanner parameters', {}, correlationId);
+      console.error('📝 Auto-generating sonar-project.properties from scanner parameters...');
+
+      // Parse -D parameters into a map
+      const paramsMap = new Map<string, string>();
+      for (const param of scannerParams) {
+        if (param.startsWith('-D')) {
+          const eqIdx = param.indexOf('=');
+          if (eqIdx > 2) {
+            const key = param.substring(2, eqIdx);
+            const value = param.substring(eqIdx + 1);
+            paramsMap.set(key, value);
+          }
+        }
+      }
+
+      // Skip if no useful parameters (e.g., only had auth params)
+      const usefulParams = Array.from(paramsMap.keys()).filter(k =>
+        !['sonar.host.url', 'sonar.login', 'sonar.token', 'sonar.projectVersion'].includes(k)
+      );
+      if (usefulParams.length === 0) {
+        console.error('   No configuration parameters to save');
+        return;
+      }
+
+      // Process library paths to relative
+      const rawLibraries = paramsMap.get('sonar.java.libraries');
+      const processedLibraries = rawLibraries
+        ? processLibraryPaths(rawLibraries, projectPath, 'relative')
+        : undefined;
+
+      // Build config from scanner parameters
+      const config: SonarPropertiesConfig = {
+        projectKey: paramsMap.get('sonar.projectKey') || '',
+        sources: paramsMap.get('sonar.sources'),
+        tests: paramsMap.get('sonar.tests'),
+        javaBinaries: paramsMap.get('sonar.java.binaries'),
+        javaTestBinaries: paramsMap.get('sonar.java.test.binaries'),
+        javaLibraries: processedLibraries,
+        javaSource: paramsMap.get('sonar.java.source'),
+        coverageReportPaths: paramsMap.get('sonar.coverage.jacoco.xmlReportPaths'),
+        encoding: 'UTF-8'
+      };
+
+      // Write the file
+      const propertiesManager = new PropertiesFileManager();
+      const result = await propertiesManager.writeConfig(projectPath, config);
+
+      if (result.success) {
+        console.error(`✅ Generated ${result.configPath}`);
+        console.error(`   Properties: ${usefulParams.length} from scanner`);
+
+        // Log key properties
+        const keyProps = ['sonar.sources', 'sonar.java.binaries', 'sonar.coverage.jacoco.xmlReportPaths'];
+        for (const key of keyProps) {
+          const value = paramsMap.get(key);
+          if (value) {
+            const displayValue = value.length > 50 ? value.substring(0, 47) + '...' : value;
+            console.error(`   ${key}=${displayValue}`);
+          }
+        }
+
+        if (rawLibraries) {
+          const libCount = rawLibraries.split(',').filter(Boolean).length;
+          console.error(`   sonar.java.libraries=${libCount} JARs (converted to relative paths)`);
+        }
+      }
+    } catch (error) {
+      // Non-blocking - log warning but don't fail the scan
+      this.logger.warn(`Failed to auto-generate properties file: ${error instanceof Error ? error.message : 'Unknown error'}`, {}, correlationId);
+      console.error(`⚠️ Could not auto-generate properties file: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 
   /**

@@ -1,7 +1,12 @@
 #!/usr/bin/env node
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { z } from 'zod';
+import {
+  InitializeRequestSchema,
+  ListToolsRequestSchema,
+  CallToolRequestSchema,
+  SetLevelRequestSchema
+} from '@modelcontextprotocol/sdk/types.js';
 import { TransportFactory, TransportMode, HTTPTransportConfig } from './transport/transport-factory.js';
 
 // Security and validation imports
@@ -99,9 +104,9 @@ class UniversalBobTheBuilderMCPServer {
   private setupHandlers() {
     // Handle initialize request (MCP protocol)
     this.server.setRequestHandler(
-      z.object({ method: z.literal('initialize') }),
-      async (request: any) => {
-        const result = {
+      InitializeRequestSchema,
+      async () => {
+        return {
           protocolVersion: '2024-11-05',
           capabilities: { tools: {} },
           serverInfo: {
@@ -109,31 +114,23 @@ class UniversalBobTheBuilderMCPServer {
             version: '2.0.0'
           }
         };
-        return result;
       }
     );
 
     // List available tools
     this.server.setRequestHandler(
-      z.object({ method: z.literal('tools/list') }),
-      async (request: any) => {
-        const result = {
+      ListToolsRequestSchema,
+      async () => {
+        return {
           tools: toolDefinitions
         };
-        return result;
       }
     );
 
     // Handle tool calls
     this.server.setRequestHandler(
-      z.object({
-        method: z.literal('tools/call'),
-        params: z.object({
-          name: z.string(),
-          arguments: z.record(z.any()).optional()
-        })
-      }),
-      async (request: any) => {
+      CallToolRequestSchema,
+      async (request) => {
         const { name } = request.params;
         const args = request.params.arguments ?? {};
         const correlationId = this.logger.generateCorrelationId();
@@ -270,12 +267,7 @@ class UniversalBobTheBuilderMCPServer {
   private setupLoggingHandlers(): void {
     // Handle logging/setLevel requests
     this.server.setRequestHandler(
-      z.object({ 
-        method: z.literal('logging/setLevel'),
-        params: z.object({
-          level: z.enum(['emergency', 'alert', 'critical', 'error', 'warning', 'notice', 'info', 'debug'])
-        })
-      }),
+      SetLevelRequestSchema,
       async (request) => {
         try {
           const { level } = request.params;

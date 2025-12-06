@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { ScanErrorParser } from './ScanErrorParser';
 import { ScanErrorCategory } from '../../../shared/types/index.js';
 
