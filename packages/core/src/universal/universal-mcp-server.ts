@@ -25,6 +25,7 @@ import {
   wrapError
 } from '../shared/errors/custom-errors.js';
 import { getLifecycleManager, ServerLifecycleManager } from './server-lifecycle.js';
+import pkg from '../../package.json';
 
 // Layered architecture: MCP layer imports
 import { toolDefinitions } from '../mcp/tool-definitions.js';
@@ -38,8 +39,7 @@ export interface ServerConfig {
   httpConfig?: HTTPTransportConfig;
 }
 
-// Application version - keep in sync with package.json
-const APP_VERSION = '0.3.0';
+const APP_VERSION = pkg.version;
 const GITHUB_REPOSITORY = 'andrearaponi/bob-the-fixer';
 
 class UniversalBobTheBuilderMCPServer {
