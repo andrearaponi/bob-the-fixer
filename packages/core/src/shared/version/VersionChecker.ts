@@ -10,11 +10,15 @@ import {
   VersionCheckResult,
   GitHubRelease,
   SemanticVersion,
+  UpdateType,
+  ReleaseMetadata,
 } from './types.js';
 
 const DEFAULT_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const GITHUB_API_BASE = 'https://api.github.com';
 const REQUEST_TIMEOUT_MS = 10000; // 10 seconds
+const METADATA_REGEX = /<!-- BOB_RELEASE_METADATA\s*([\s\S]*?)\s*-->/;
+const VALID_UPDATE_TYPES: UpdateType[] = ['core', 'infra', 'full'];
 
 export class VersionChecker {
   private readonly logger: StructuredLogger;
@@ -91,6 +95,11 @@ export class VersionChecker {
       const latestVersion = this.normalizeVersion(latestRelease.tag_name);
       const currentVersion = this.normalizeVersion(this.config.currentVersion);
 
+      // Parse metadata from release body
+      const metadata = this.parseReleaseMetadata(latestRelease.body);
+      const updateType: UpdateType = metadata?.updateType ?? 'full';
+      const updateCommand = this.generateUpdateCommand(updateType);
+
       const result: VersionCheckResult = {
         currentVersion: this.config.currentVersion,
         latestVersion,
@@ -98,6 +107,9 @@ export class VersionChecker {
         releaseUrl: latestRelease.html_url,
         releaseName: latestRelease.name,
         checkedAt: new Date(),
+        updateType,
+        metadata: metadata ?? undefined,
+        updateCommand,
       };
 
       this.lastCheckResult = result;
@@ -129,6 +141,68 @@ export class VersionChecker {
   }
 
   /**
+   * Parse release metadata from release body
+   * Extracts JSON from <!-- BOB_RELEASE_METADATA ... --> comment block
+   */
+  parseReleaseMetadata(body: string | null): ReleaseMetadata | null {
+    if (!body) {
+      return null;
+    }
+
+    const match = METADATA_REGEX.exec(body);
+    if (!match || !match[1]) {
+      return null;
+    }
+
+    try {
+      const parsed = JSON.parse(match[1].trim()) as Record<string, unknown>;
+
+      // Validate updateType is present and valid
+      if (!parsed.updateType || !VALID_UPDATE_TYPES.includes(parsed.updateType as UpdateType)) {
+        return null;
+      }
+
+      // Safe to cast after validation
+      const metadata: ReleaseMetadata = {
+        updateType: parsed.updateType as UpdateType,
+        minVersion: parsed.minVersion as string | undefined,
+        breakingChanges: parsed.breakingChanges as boolean | undefined,
+        notes: parsed.notes as string | undefined,
+        requiredActions: parsed.requiredActions as string[] | undefined,
+      };
+
+      return metadata;
+    } catch {
+      this.logger.debug('Failed to parse release metadata', { body: body.substring(0, 200) });
+      return null;
+    }
+  }
+
+  /**
+   * Generate update command based on update type
+   */
+  generateUpdateCommand(updateType: UpdateType): string {
+    // All update types use the same command - the script auto-detects from metadata
+    return './update.sh';
+  }
+
+  /**
+   * Get update type description for banner
+   */
+  private getUpdateTypeDescription(updateType: UpdateType): string {
+    switch (updateType) {
+      case 'core':
+        return '(Code update only)';
+      case 'infra':
+        return '(Includes container changes)';
+      case 'full':
+        return '(Breaking changes - see release notes)';
+      default:
+        return '';
+    }
+  }
+
+  /**
    * Get update banner message (only returns once per session)
    * Returns null if no update available or already shown
    */
@@ -142,12 +216,29 @@ export class VersionChecker {
     }
 
     this.notificationShown = true;
-    const { latestVersion, currentVersion, releaseUrl } = this.lastCheckResult;
+    const {
+      latestVersion,
+      currentVersion,
+      releaseUrl,
+      updateType,
+      metadata,
+      updateCommand,
+    } = this.lastCheckResult;
+
+    // Build update type description
+    const typeDescription = this.getUpdateTypeDescription(updateType);
+
+    // Build notes line if available
+    const notesLine = metadata?.notes
+      ? `  Notes: ${metadata.notes}\n`
+      : '';
 
     return `\n` +
       `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
-      `  UPDATE AVAILABLE: Bob the Fixer v${latestVersion}\n` +
+      `  UPDATE AVAILABLE: Bob the Fixer v${latestVersion} ${typeDescription}\n` +
       `  Current version: v${currentVersion}\n` +
+      notesLine +
+      `  Run: ${updateCommand}\n` +
       `  ${releaseUrl ?? 'https://github.com/andrearaponi/bob-the-fixer/releases'}\n` +
       `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
   }
