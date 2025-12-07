@@ -2,9 +2,9 @@
 
 **Intelligent AI system for code quality & security analysis with SonarQube.** Achieve **ZERO technical debt** through automated analysis, security scanning, and natural language interaction with your AI assistant.
 
-> 🚀 **Release**: v0.3.5 - Version Notification System & 20 MCP tools
+> 🚀 **Release**: 0.3.6 - Intelligent Update System & 20 MCP tools
 
-![Version](https://img.shields.io/badge/version-0.3.5-blue)
+![Version](https://img.shields.io/badge/version-0.3.6-blue)
 ![License](https://img.shields.io/badge/license-AGPL--3.0-green)
 ![Node](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen)
 ![Container](https://img.shields.io/badge/podman-recommended-blue)
@@ -79,6 +79,44 @@ To completely remove Bob the Fixer from your system:
 - Source code repository
 
 The uninstaller will ask for confirmation before removing anything.
+
+---
+
+## 🔄 Update
+
+To update Bob the Fixer to the latest version:
+
+```bash
+./update.sh
+```
+
+The update script automatically detects what type of update is needed:
+
+| Update Type | Description | What Happens |
+|-------------|-------------|--------------|
+| **core** | Code changes only | `git pull` + `npm install` + `npm build` |
+| **infra** | Container changes | Above + restart SonarQube containers |
+| **full** | Breaking changes | Shows migration guide |
+
+**Available options:**
+
+```bash
+./update.sh --check     # Check for updates without applying
+./update.sh --dry-run   # Preview what would be updated
+./update.sh --force     # Bypass uncommitted changes check
+```
+
+When an update is available, Bob will show a banner with the update command:
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  UPDATE AVAILABLE: Bob the Fixer 0.3.7 (Code update only)
+  Current version: 0.3.6
+  Notes: Bug fixes and improvements
+  Run: ./update.sh
+  https://github.com/andrearaponi/bob-the-fixer/releases
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
 
 ---
 
@@ -223,7 +261,8 @@ bob-the-fixer/
 │   └── ISSUE_TEMPLATE/
 │
 ├── install.sh                    # One-command installer
-└── uninstall.sh                  # Uninstaller script
+├── uninstall.sh                  # Uninstaller script
+└── update.sh                     # Intelligent update script
 ```
 
 ### Design Principles
