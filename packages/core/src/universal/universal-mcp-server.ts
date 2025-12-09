@@ -8,6 +8,9 @@ import {
   SetLevelRequestSchema
 } from '@modelcontextprotocol/sdk/types.js';
 import { TransportFactory, TransportMode, HTTPTransportConfig } from './transport/transport-factory.js';
+import dotenv from 'dotenv';
+import path from 'path';
+import { ProjectManager } from './project-manager.js';
 
 // Security and validation imports
 import {
@@ -52,6 +55,28 @@ class UniversalBobTheBuilderMCPServer {
   private versionChecker?: VersionChecker;
 
   constructor(config: ServerConfig = {}) {
+    // CRITICAL FIX FOR GITHUB COPILOT CLI BUG
+    // Copilot restarts the MCP server without environment variables after authentication.
+    // We try to load them from local config file if they are missing.
+    // Suppress stdout/stderr during dotenv loading to avoid breaking MCP protocol
+    const originalStdoutWrite = process.stdout.write;
+    const originalStderrWrite = process.stderr.write; // Also suppress stderr for good measure
+
+    // Temporarily replace write functions with no-ops
+    process.stdout.write = () => true;
+    process.stderr.write = () => true;
+
+    try {
+      dotenv.config({ path: path.join(process.cwd(), 'bobthefixer.env') });
+    } catch (e) {
+      // Log to our logger if it's available, otherwise ignore silently
+      // In constructor, logger might not be fully initialized, so safest to ignore
+      // this.logger.debug('Error loading dotenv config during startup', e);
+    } finally {
+      // Restore original write functions
+      process.stdout.write = originalStdoutWrite;
+      process.stderr.write = originalStderrWrite;
+    }
 
     this.config = {
       transport: config.transport ?? 'stdio',
@@ -343,6 +368,11 @@ class UniversalBobTheBuilderMCPServer {
       // Initialize version checker for update notifications
       this.initializeVersionChecker();
 
+      // Sync environment variables to local config file (Backup for Copilot restart bug)
+      // We do this non-blocking so we don't delay startup
+      new ProjectManager().ensureConfigSync().catch(err => {
+        this.logger.warn('Failed to sync environment to config file', err as Error);
+      });
 
     } catch (error) {
       this.logger.error('Failed to start MCP server', error as Error);

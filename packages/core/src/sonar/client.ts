@@ -1,5 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
-import { SonarIssue, IssueFilter, SonarRuleDetails, SonarSecurityHotspot, SonarProjectMetrics, SonarSecurityHotspotDetails, SonarFilesWithDuplication, SonarDuplicationDetails, HotspotStatus, HotspotResolution, HotspotSeverity, SonarRuleSearchFilter, SonarRulesResponse, SonarComponentDetails, SonarQualityGateStatus, SonarLineCoverage } from './types';
+import { SonarIssue, IssueFilter, SonarRuleDetails, SonarSecurityHotspot, SonarProjectMetrics, SonarSecurityHotspotDetails, SonarFilesWithDuplication, SonarDuplicationDetails, HotspotStatus, HotspotResolution, HotspotSeverity, SonarRuleSearchFilter, SonarRulesResponse, SonarComponentDetails, SonarQualityGateStatus, SonarLineCoverage, FileWithCoverage, FilesWithCoverageGaps, CoveragePriority } from './types';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as fs from 'fs/promises';
@@ -2840,6 +2840,137 @@ export class SonarQubeClient {
       console.error('Error generating duplication summary:', error.message);
       throw error;
     }
+  }
+
+  /**
+   * Get files with coverage gaps
+   *
+   * Identifies files below target coverage threshold and categorizes them:
+   * - Files with coverage data (can calculate exact coverage %)
+   * - Files without coverage data (need coverage setup first)
+   *
+   * Uses /api/components/tree with coverage metrics.
+   *
+   * @param options Configuration options
+   * @returns Files with coverage gaps and setup requirements
+   */
+  async getFilesWithCoverageGaps(options: {
+    targetCoverage?: number;
+    maxFiles?: number;
+    sortBy?: 'coverage' | 'uncovered_lines' | 'name';
+    includeNoCoverageData?: boolean;
+  } = {}): Promise<FilesWithCoverageGaps> {
+    const {
+      targetCoverage = 100,
+      maxFiles = 50,
+      sortBy = 'coverage',
+      includeNoCoverageData = false
+    } = options;
+
+    const params = {
+      component: this.projectKey,
+      qualifiers: 'FIL',
+      metricKeys: 'coverage,uncovered_lines,lines_to_cover',
+      ps: Math.min(maxFiles * 2, 500) // Fetch more to account for filtering
+    };
+
+    try {
+      // IMPORTANT: Use /api/measures/component_tree instead of /api/components/tree
+      // The latter does NOT return measures even when metricKeys is specified
+      const response = await this.client.get('/api/measures/component_tree', { params });
+      const allFiles = response.data.components ?? [];
+
+      // Categorize files
+      const filesWithCoverageData: FileWithCoverage[] = [];
+      const filesWithoutCoverageData: string[] = [];
+
+      for (const file of allFiles) {
+        const coverageMetric = file.measures?.find((m: any) => m.metric === 'coverage');
+        const linesToCoverMetric = file.measures?.find((m: any) => m.metric === 'lines_to_cover');
+        const uncoveredLinesMetric = file.measures?.find((m: any) => m.metric === 'uncovered_lines');
+
+        // Check if file has valid coverage data
+        const hasLinesToCover = linesToCoverMetric && parseFloat(linesToCoverMetric.value) > 0;
+
+        if (coverageMetric !== undefined && hasLinesToCover) {
+          // File has coverage data
+          const coverage = parseFloat(coverageMetric.value);
+          const uncoveredLines = uncoveredLinesMetric ? parseInt(uncoveredLinesMetric.value) : 0;
+          const linesToCover = parseInt(linesToCoverMetric.value);
+
+          // Filter by target coverage
+          if (coverage < targetCoverage) {
+            filesWithCoverageData.push({
+              key: file.key,
+              path: file.path,
+              name: file.name,
+              language: file.language ?? 'unknown',
+              coverage,
+              uncoveredLines,
+              linesToCover,
+              hasCoverageData: true,
+              priority: this.calculateCoveragePriority(coverage, uncoveredLines)
+            });
+          }
+        } else if (includeNoCoverageData && file.path) {
+          // File without coverage data - potentially never tested
+          filesWithoutCoverageData.push(file.path);
+        }
+      }
+
+      // Sort files
+      filesWithCoverageData.sort((a, b) => {
+        switch (sortBy) {
+          case 'uncovered_lines':
+            return b.uncoveredLines - a.uncoveredLines; // Most uncovered first
+          case 'name':
+            return a.name.localeCompare(b.name);
+          case 'coverage':
+          default:
+            return a.coverage - b.coverage; // Lowest coverage first
+        }
+      });
+
+      // Limit results
+      const limitedFiles = filesWithCoverageData.slice(0, maxFiles);
+
+      // Calculate average coverage
+      const averageCoverage = limitedFiles.length > 0
+        ? Math.round(limitedFiles.reduce((sum, f) => sum + f.coverage, 0) / limitedFiles.length)
+        : 0;
+
+      // Determine if project has any coverage report
+      // hasCoverageReport is true if at least one file has coverage data
+      const hasCoverageReport = filesWithCoverageData.length > 0 ||
+        (allFiles.length > 0 && filesWithoutCoverageData.length < allFiles.length);
+
+      return {
+        totalFiles: allFiles.length,
+        filesAnalyzed: filesWithCoverageData.length,
+        filesWithGaps: limitedFiles.length,
+        filesWithoutCoverageData: filesWithoutCoverageData.length,
+        averageCoverage,
+        files: limitedFiles,
+        filesNeedingCoverageSetup: filesWithoutCoverageData.slice(0, 20), // Limit to first 20
+        hasCoverageReport
+      };
+    } catch (error: any) {
+      console.error('Error fetching files with coverage gaps:', error.response?.status, error.response?.data);
+      throw error;
+    }
+  }
+
+  /**
+   * Calculate priority based on coverage level
+   * @param coverage Coverage percentage (0-100)
+   * @param uncoveredLines Number of uncovered lines
+   * @returns Priority level
+   */
+  private calculateCoveragePriority(coverage: number, uncoveredLines: number): CoveragePriority {
+    if (coverage === 0) return 'critical'; // Zero coverage = highest priority
+    if (coverage < 30 || uncoveredLines > 100) return 'high';
+    if (coverage < 60 || uncoveredLines > 50) return 'medium';
+    return 'low';
   }
 }
 

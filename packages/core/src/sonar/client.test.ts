@@ -964,6 +964,283 @@ describe('SonarQubeClient', () => {
     });
   });
 
+  describe('getFilesWithCoverageGaps', () => {
+    beforeEach(() => {
+      client = new SonarQubeClient(
+        'http://localhost:9000',
+        'test-token',
+        'test-project'
+      );
+    });
+
+    const mockFilesWithCoverage = {
+      paging: { pageIndex: 1, pageSize: 100, total: 3 },
+      baseComponent: { key: 'test-project', name: 'Test Project', qualifier: 'TRK' },
+      components: [
+        {
+          key: 'test-project:src/critical.ts',
+          name: 'critical.ts',
+          path: 'src/critical.ts',
+          language: 'ts',
+          measures: [
+            { metric: 'coverage', value: '0.0' },
+            { metric: 'uncovered_lines', value: '150' },
+            { metric: 'lines_to_cover', value: '150' }
+          ]
+        },
+        {
+          key: 'test-project:src/partial.ts',
+          name: 'partial.ts',
+          path: 'src/partial.ts',
+          language: 'ts',
+          measures: [
+            { metric: 'coverage', value: '45.0' },
+            { metric: 'uncovered_lines', value: '55' },
+            { metric: 'lines_to_cover', value: '100' }
+          ]
+        },
+        {
+          key: 'test-project:src/good.ts',
+          name: 'good.ts',
+          path: 'src/good.ts',
+          language: 'ts',
+          measures: [
+            { metric: 'coverage', value: '85.0' },
+            { metric: 'uncovered_lines', value: '15' },
+            { metric: 'lines_to_cover', value: '100' }
+          ]
+        }
+      ]
+    };
+
+    const mockFilesNoCoverage = {
+      paging: { pageIndex: 1, pageSize: 100, total: 2 },
+      baseComponent: { key: 'test-project', name: 'Test Project', qualifier: 'TRK' },
+      components: [
+        {
+          key: 'test-project:src/no-coverage.ts',
+          name: 'no-coverage.ts',
+          path: 'src/no-coverage.ts',
+          language: 'ts',
+          measures: [] // No coverage data
+        },
+        {
+          key: 'test-project:src/another.ts',
+          name: 'another.ts',
+          path: 'src/another.ts',
+          language: 'ts',
+          measures: [] // No coverage data
+        }
+      ]
+    };
+
+    it('should fetch files with coverage gaps successfully', async () => {
+      mockAxiosInstance.get = vi.fn(async () => ({ data: mockFilesWithCoverage }));
+
+      const result = await client.getFilesWithCoverageGaps();
+
+      // Uses /api/measures/component_tree (not /api/components/tree) to get metrics
+      expect(mockAxiosInstance.get).toHaveBeenCalledWith('/api/measures/component_tree', {
+        params: expect.objectContaining({
+          component: 'test-project',
+          qualifiers: 'FIL',
+          metricKeys: 'coverage,uncovered_lines,lines_to_cover'
+        })
+      });
+      expect(result.hasCoverageReport).toBe(true);
+    });
+
+    it('should return files sorted by coverage ascending (default)', async () => {
+      mockAxiosInstance.get = vi.fn(async () => ({ data: mockFilesWithCoverage }));
+
+      const result = await client.getFilesWithCoverageGaps();
+
+      expect(result.files[0].coverage).toBe(0); // critical.ts first
+      expect(result.files[1].coverage).toBe(45); // partial.ts second
+      expect(result.files[2].coverage).toBe(85); // good.ts last
+    });
+
+    it('should filter files below target coverage', async () => {
+      mockAxiosInstance.get = vi.fn(async () => ({ data: mockFilesWithCoverage }));
+
+      const result = await client.getFilesWithCoverageGaps({ targetCoverage: 50 });
+
+      // Only critical.ts (0%) and partial.ts (45%) should be returned
+      expect(result.filesWithGaps).toBe(2);
+      expect(result.files.every(f => f.coverage < 50)).toBe(true);
+    });
+
+    it('should assign critical priority to 0% coverage', async () => {
+      mockAxiosInstance.get = vi.fn(async () => ({ data: mockFilesWithCoverage }));
+
+      const result = await client.getFilesWithCoverageGaps();
+
+      const criticalFile = result.files.find(f => f.coverage === 0);
+      expect(criticalFile?.priority).toBe('critical');
+    });
+
+    it('should assign high priority to <30% coverage', async () => {
+      const mockWithHighPriority = {
+        ...mockFilesWithCoverage,
+        components: [{
+          ...mockFilesWithCoverage.components[0],
+          measures: [
+            { metric: 'coverage', value: '25.0' },
+            { metric: 'uncovered_lines', value: '75' },
+            { metric: 'lines_to_cover', value: '100' }
+          ]
+        }]
+      };
+      mockAxiosInstance.get = vi.fn(async () => ({ data: mockWithHighPriority }));
+
+      const result = await client.getFilesWithCoverageGaps();
+
+      expect(result.files[0].priority).toBe('high');
+    });
+
+    it('should assign medium priority to 30-60% coverage', async () => {
+      mockAxiosInstance.get = vi.fn(async () => ({ data: mockFilesWithCoverage }));
+
+      const result = await client.getFilesWithCoverageGaps();
+
+      const mediumFile = result.files.find(f => f.coverage === 45);
+      expect(mediumFile?.priority).toBe('medium');
+    });
+
+    it('should assign low priority to >60% coverage', async () => {
+      mockAxiosInstance.get = vi.fn(async () => ({ data: mockFilesWithCoverage }));
+
+      const result = await client.getFilesWithCoverageGaps();
+
+      const lowFile = result.files.find(f => f.coverage === 85);
+      expect(lowFile?.priority).toBe('low');
+    });
+
+    it('should handle project with NO coverage report', async () => {
+      mockAxiosInstance.get = vi.fn(async () => ({ data: mockFilesNoCoverage }));
+
+      const result = await client.getFilesWithCoverageGaps({ includeNoCoverageData: true });
+
+      expect(result.hasCoverageReport).toBe(false);
+      expect(result.filesWithGaps).toBe(0);
+      expect(result.filesWithoutCoverageData).toBe(2);
+    });
+
+    it('should return filesNeedingCoverageSetup when no coverage data', async () => {
+      mockAxiosInstance.get = vi.fn(async () => ({ data: mockFilesNoCoverage }));
+
+      const result = await client.getFilesWithCoverageGaps({ includeNoCoverageData: true });
+
+      expect(result.filesNeedingCoverageSetup).toContain('src/no-coverage.ts');
+      expect(result.filesNeedingCoverageSetup).toContain('src/another.ts');
+    });
+
+    it('should handle mixed scenario: some files with coverage, some without', async () => {
+      const mockMixed = {
+        ...mockFilesWithCoverage,
+        components: [
+          ...mockFilesWithCoverage.components,
+          {
+            key: 'test-project:src/no-data.ts',
+            name: 'no-data.ts',
+            path: 'src/no-data.ts',
+            language: 'ts',
+            measures: [] // No coverage data
+          }
+        ]
+      };
+      mockAxiosInstance.get = vi.fn(async () => ({ data: mockMixed }));
+
+      const result = await client.getFilesWithCoverageGaps({ includeNoCoverageData: true });
+
+      expect(result.hasCoverageReport).toBe(true); // Has some coverage data
+      expect(result.filesWithGaps).toBe(3);
+      expect(result.filesWithoutCoverageData).toBe(1);
+    });
+
+    it('should respect maxFiles limit', async () => {
+      mockAxiosInstance.get = vi.fn(async () => ({ data: mockFilesWithCoverage }));
+
+      const result = await client.getFilesWithCoverageGaps({ maxFiles: 2 });
+
+      expect(result.files.length).toBeLessThanOrEqual(2);
+    });
+
+    it('should sort by uncovered_lines when requested', async () => {
+      mockAxiosInstance.get = vi.fn(async () => ({ data: mockFilesWithCoverage }));
+
+      const result = await client.getFilesWithCoverageGaps({ sortBy: 'uncovered_lines' });
+
+      // Should be sorted by uncovered lines descending (most uncovered first)
+      expect(result.files[0].uncoveredLines).toBe(150); // critical.ts
+    });
+
+    it('should sort by name when requested', async () => {
+      mockAxiosInstance.get = vi.fn(async () => ({ data: mockFilesWithCoverage }));
+
+      const result = await client.getFilesWithCoverageGaps({ sortBy: 'name' });
+
+      // Should be sorted alphabetically
+      expect(result.files[0].name).toBe('critical.ts');
+      expect(result.files[1].name).toBe('good.ts');
+      expect(result.files[2].name).toBe('partial.ts');
+    });
+
+    it('should calculate average coverage correctly', async () => {
+      mockAxiosInstance.get = vi.fn(async () => ({ data: mockFilesWithCoverage }));
+
+      const result = await client.getFilesWithCoverageGaps();
+
+      // Average of 0 + 45 + 85 = 130 / 3 = 43.33... rounded to 43
+      expect(result.averageCoverage).toBeCloseTo(43, 0);
+    });
+
+    it('should handle empty project (no files)', async () => {
+      mockAxiosInstance.get = vi.fn(async () => ({
+        data: {
+          ...mockFilesWithCoverage,
+          components: []
+        }
+      }));
+
+      const result = await client.getFilesWithCoverageGaps();
+
+      expect(result.totalFiles).toBe(0);
+      expect(result.filesWithGaps).toBe(0);
+      expect(result.hasCoverageReport).toBe(false);
+    });
+
+    it('should exclude files with linesToCover === 0', async () => {
+      const mockWithNonExecutable = {
+        ...mockFilesWithCoverage,
+        components: [{
+          key: 'test-project:src/types.d.ts',
+          name: 'types.d.ts',
+          path: 'src/types.d.ts',
+          language: 'ts',
+          measures: [
+            { metric: 'coverage', value: '0.0' },
+            { metric: 'uncovered_lines', value: '0' },
+            { metric: 'lines_to_cover', value: '0' } // No executable lines
+          ]
+        }]
+      };
+      mockAxiosInstance.get = vi.fn(async () => ({ data: mockWithNonExecutable }));
+
+      const result = await client.getFilesWithCoverageGaps();
+
+      expect(result.files.length).toBe(0); // Should be excluded
+    });
+
+    it('should handle API errors gracefully', async () => {
+      mockAxiosInstance.get = vi.fn(async () => {
+        throw { response: { status: 500, data: { errors: [{ msg: 'Internal error' }] } } };
+      });
+
+      await expect(client.getFilesWithCoverageGaps()).rejects.toThrow();
+    });
+  });
+
   describe('Error Handling', () => {
     beforeEach(() => {
       client = new SonarQubeClient(
