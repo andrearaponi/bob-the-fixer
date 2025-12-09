@@ -372,4 +372,29 @@ export interface CoverageAnalysisResult {
   gaps: CoverageGap[];
   summary: string;  // Human-readable summary for LLM
 }
-  
+
+// File-level coverage types for sonar_get_uncovered_files tool
+export type CoveragePriority = 'critical' | 'high' | 'medium' | 'low';
+
+export interface FileWithCoverage {
+  key: string;              // SonarQube component key
+  path: string;             // Relative file path
+  name: string;             // File name
+  language: string;         // Detected language
+  coverage: number;         // Coverage percentage (0-100)
+  uncoveredLines: number;   // Number of uncovered lines
+  linesToCover: number;     // Total coverable lines
+  hasCoverageData: boolean; // True if coverage data exists for this file
+  priority: CoveragePriority; // Priority based on coverage level
+}
+
+export interface FilesWithCoverageGaps {
+  totalFiles: number;                    // Total source files in project
+  filesAnalyzed: number;                 // Files with coverage data analyzed
+  filesWithGaps: number;                 // Files below target coverage
+  filesWithoutCoverageData: number;      // Files missing coverage data
+  averageCoverage: number;               // Average coverage across analyzed files
+  files: FileWithCoverage[];             // Files with coverage gaps
+  filesNeedingCoverageSetup: string[];   // File paths without any coverage data
+  hasCoverageReport: boolean;            // True if project has any coverage data uploaded
+}

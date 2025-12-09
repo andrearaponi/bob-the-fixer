@@ -227,6 +227,30 @@ export const SonarGetCoverageGapsSchema = z.object({
     .describe('Include lines with partial branch coverage')
 }).describe('[EN] Analyze code coverage gaps for a specific file. Returns uncovered code blocks and partial branch coverage with code snippets, optimized for LLM-assisted test generation.');
 
+export const SonarGetUncoveredFilesSchema = z.object({
+  targetCoverage: z.number()
+    .min(0, 'Target coverage cannot be negative')
+    .max(100, 'Target coverage cannot exceed 100')
+    .optional()
+    .default(100)
+    .describe('Target coverage percentage. Files below this threshold will be returned (default: 100)'),
+  maxFiles: z.number()
+    .int('Max files must be integer')
+    .min(1, 'Max files must be at least 1')
+    .max(500, 'Max files cannot exceed 500')
+    .optional()
+    .default(50)
+    .describe('Maximum number of files to return (default: 50)'),
+  sortBy: z.enum(['coverage', 'uncovered_lines', 'name'])
+    .optional()
+    .default('coverage')
+    .describe('Sort order: coverage (lowest first), uncovered_lines (most first), name (alphabetical)'),
+  includeNoCoverageData: z.boolean()
+    .optional()
+    .default(false)
+    .describe('Include files without coverage data (projects never scanned with coverage)')
+}).describe('[EN] Get list of files with coverage below target threshold. Handles projects without coverage data by providing setup instructions. Returns prioritized list with critical/high/medium/low priority levels.');
+
 // Module configuration for multi-module projects
 const SonarModuleConfigSchema = z.object({
   name: z.string()

@@ -352,6 +352,36 @@ export const toolDefinitions = [
     }
   },
   {
+    name: 'sonar_get_uncovered_files',
+    description: '[EN] Get list of files with coverage below target threshold. Returns prioritized list (critical/high/medium/low) based on coverage percentage. Handles projects without coverage data by providing setup instructions. Use this to identify files that need tests.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        targetCoverage: {
+          type: 'number' as const,
+          minimum: 0,
+          maximum: 100,
+          description: 'Target coverage percentage. Files below this threshold will be returned (default: 100)'
+        },
+        maxFiles: {
+          type: 'number' as const,
+          minimum: 1,
+          maximum: 500,
+          description: 'Maximum number of files to return (default: 50)'
+        },
+        sortBy: {
+          type: 'string' as const,
+          enum: ['coverage', 'uncovered_lines', 'name'],
+          description: 'Sort order: coverage (lowest first), uncovered_lines (most first), name (alphabetical)'
+        },
+        includeNoCoverageData: {
+          type: 'boolean' as const,
+          description: 'Include files without coverage data (projects never scanned with coverage)'
+        }
+      }
+    }
+  },
+  {
     name: 'sonar_generate_config',
     description: '[EN] Generate sonar-project.properties file for SonarQube scanning. Use this after sonar_scan_project fails with configuration errors (sources not found, module errors, etc.) to create a proper configuration based on project structure analysis.',
     inputSchema: {

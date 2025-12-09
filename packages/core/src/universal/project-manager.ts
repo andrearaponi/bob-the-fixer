@@ -9,6 +9,7 @@ export interface ProjectConfig {
   createdAt: string;
   language?: string;
   framework?: string;
+  logLevel?: string;
 }
 
 export interface ProjectContext {
@@ -66,24 +67,86 @@ export class ProjectManager {
       }
     }
 
-    // IMPORTANT: Always prefer environment variables over file config for token
-    // This prevents 401 errors when Claude restarts the MCP server
-    if (process.env.SONAR_TOKEN) {
-      console.error('[ProjectManager] Using SONAR_TOKEN from environment instead of file');
-      config.sonarToken = process.env.SONAR_TOKEN;
-    } else if (!config.sonarToken) {
+    // IMPORTANT: Always prefer environment variables over file config
+    if (process.env.SONAR_TOKEN) config.sonarToken = process.env.SONAR_TOKEN;
+    if (process.env.SONAR_URL) config.sonarUrl = process.env.SONAR_URL;
+    if (process.env.SONAR_PROJECT_KEY) config.sonarProjectKey = process.env.SONAR_PROJECT_KEY;
+    
+    // Validate required fields (Token is critical, others have defaults or can be generated)
+    if (!config.sonarToken && !process.env.SONAR_TOKEN) {
       console.error('[ProjectManager] WARNING: No SONAR_TOKEN in environment or file!');
     }
-    
-    if (process.env.SONAR_URL) {
-      config.sonarUrl = process.env.SONAR_URL;
-    }
 
-    if (!config.sonarUrl || !config.sonarToken || !config.sonarProjectKey) {
-      throw new Error('Invalid configuration: missing required fields');
-    }
+    // Ensure defaults
+    if (!config.sonarUrl) config.sonarUrl = 'http://localhost:9000';
 
     return config as ProjectConfig;
+  }
+
+  /**
+   * Ensures environment variables are synced to local config file.
+   * This is critical for tools like Copilot CLI that might restart the process
+   * without passing environment variables in subsequent runs.
+   */
+  async ensureConfigSync(): Promise<void> {
+    try {
+      const configPath = path.join(this.workingDir, this.CONFIG_FILE);
+      let currentConfig: ProjectConfig;
+      let fileContent = '';
+
+      try {
+        fileContent = await fs.readFile(configPath, 'utf-8');
+        currentConfig = await this.loadConfig(configPath);
+      } catch {
+        // File doesn't exist, we will create it if we have env vars to save
+        currentConfig = {
+          sonarUrl: 'http://localhost:9000',
+          sonarToken: '',
+          sonarProjectKey: '',
+          createdAt: new Date().toISOString()
+        } as ProjectConfig;
+      }
+
+      // vars to sync
+      const varsToSync = [
+        { env: 'SONAR_TOKEN', config: 'sonarToken' },
+        { env: 'SONAR_URL', config: 'sonarUrl' },
+        { env: 'SONAR_PROJECT_KEY', config: 'sonarProjectKey' },
+        { env: 'LOG_LEVEL', config: 'logLevel' } // Add logLevel support
+      ];
+
+      let needsSave = false;
+      const configToSave: any = { ...currentConfig };
+
+      for (const { env, config } of varsToSync) {
+        const envValue = process.env[env];
+        // If Env exists and is different/missing in file config, update file
+        if (envValue && envValue !== (currentConfig as any)[config]) {
+          console.error(`[ProjectManager] Caching ${env} from environment to file...`);
+          configToSave[config] = envValue;
+          needsSave = true;
+        }
+      }
+
+      // Special case: If config doesn't exist at all but we have tokens, create it
+      if (!fileContent && process.env.SONAR_TOKEN) {
+         // Need to generate project key if missing
+         if (!configToSave.sonarProjectKey) {
+            const context = await this.analyzeProject();
+            configToSave.sonarProjectKey = this.generateProjectKey(context);
+            configToSave.language = context.language.join(',');
+            configToSave.framework = context.framework;
+            configToSave.createdAt = new Date().toISOString();
+         }
+         needsSave = true;
+      }
+
+      if (needsSave) {
+        await this.saveConfig(configPath, configToSave);
+      }
+    } catch (error) {
+      console.error('[ProjectManager] Failed to sync config:', error);
+    }
   }
 
   /**
@@ -135,6 +198,7 @@ export class ProjectManager {
       `CREATED_AT=${config.createdAt}`,
       config.language ? `LANGUAGE=${config.language}` : '',
       config.framework ? `FRAMEWORK=${config.framework}` : '',
+      config.logLevel ? `LOG_LEVEL=${config.logLevel}` : '',
     ].filter(Boolean).join('\n');
 
     await fs.writeFile(configPath, content, 'utf-8');
@@ -369,7 +433,8 @@ export class ProjectManager {
       'SONAR_PROJECT_KEY': 'sonarProjectKey',
       'CREATED_AT': 'createdAt',
       'LANGUAGE': 'language',
-      'FRAMEWORK': 'framework'
+      'FRAMEWORK': 'framework',
+      'LOG_LEVEL': 'logLevel'
     };
     return mapping[key] || key.toLowerCase();
   }

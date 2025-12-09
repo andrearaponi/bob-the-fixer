@@ -24,6 +24,7 @@ import { handleDiagnosePermissions } from './handlers/diagnose-permissions.handl
 import { handleDeleteProject } from './handlers/delete-project.handler.js';
 import { handleLinkExistingProject } from './handlers/link-existing-project.handler.js';
 import { handleGetCoverageGaps } from './handlers/coverage-gaps.handler.js';
+import { handleGetUncoveredFiles } from './handlers/uncovered-files.handler.js';
 import { handleGenerateConfig } from './handlers/generate-config.handler.js';
 
 /**
@@ -53,6 +54,7 @@ export const toolRoutes: Record<string, ToolHandler> = {
   sonar_delete_project: handleDeleteProject,
   sonar_link_existing_project: handleLinkExistingProject,
   sonar_get_coverage_gaps: handleGetCoverageGaps,
+  sonar_get_uncovered_files: handleGetUncoveredFiles,
   sonar_generate_config: handleGenerateConfig
 };
 
