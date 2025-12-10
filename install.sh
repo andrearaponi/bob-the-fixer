@@ -63,7 +63,7 @@ if [ -z "${BASH_SOURCE[0]}" ] || [ "${BASH_SOURCE[0]}" = "bash" ]; then
 
     if [ -d "./$REPO_NAME" ]; then
         echo -e "${YELLOW}⚠️  Directory '$REPO_NAME' already exists${NC}"
-        read -p "Remove and start fresh? (y/N): " CHOICE
+        read -p "Remove and start fresh? (y/N): " CHOICE < /dev/tty
 
         if [ "$CHOICE" = "y" ] || [ "$CHOICE" = "Y" ]; then
             rm -rf "./$REPO_NAME"

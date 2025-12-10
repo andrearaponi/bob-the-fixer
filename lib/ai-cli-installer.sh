@@ -281,7 +281,7 @@ check_and_install_ai_clis() {
     echo ""
 
     printf "Choice [1-6]: "
-    read CLI_CHOICE
+    read CLI_CHOICE < /dev/tty
 
     # Handle multiple selections (bash 3.2 compatible)
     case "$CLI_CHOICE" in

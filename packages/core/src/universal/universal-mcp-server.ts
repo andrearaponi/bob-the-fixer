@@ -55,25 +55,60 @@ class UniversalBobTheBuilderMCPServer {
   private versionChecker?: VersionChecker;
 
   constructor(config: ServerConfig = {}) {
-    // CRITICAL FIX FOR GITHUB COPILOT CLI BUG
-    // Copilot restarts the MCP server without environment variables after authentication.
-    // We try to load them from local config file if they are missing.
-    // Suppress stdout/stderr during dotenv loading to avoid breaking MCP protocol
-    const originalStdoutWrite = process.stdout.write;
-    const originalStderrWrite = process.stderr.write; // Also suppress stderr for good measure
+    // ============================================================================
+    // WORKAROUND FOR GITHUB COPILOT CLI BUG (#744)
+    // https://github.com/github/copilot-cli/issues/744
+    //
+    // Problem: Copilot CLI restarts the MCP server ~5 seconds after initial startup
+    // (after GitHub authentication) WITHOUT passing the environment variables
+    // defined in mcp-config.json. This causes SONAR_TOKEN to be lost.
+    //
+    // Solution: On first startup (when env vars are present), we save credentials
+    // to a global file (~/.bobthefixer/credentials.env). On subsequent restarts
+    // (when env vars are missing), we load them from this global file.
+    //
+    // Flow:
+    // 1. First startup:  SONAR_TOKEN present → save to ~/.bobthefixer/credentials.env
+    // 2. Copilot restart: SONAR_TOKEN missing → load from ~/.bobthefixer/credentials.env
+    // 3. Also load local bobthefixer.env for project-specific settings (SONAR_PROJECT_KEY)
+    // ============================================================================
 
-    // Temporarily replace write functions with no-ops
+    const os = require('os');
+    const fs = require('fs');
+
+    // Suppress stdout/stderr during file operations to avoid breaking MCP protocol
+    const originalStdoutWrite = process.stdout.write;
+    const originalStderrWrite = process.stderr.write;
     process.stdout.write = () => true;
     process.stderr.write = () => true;
 
     try {
-      dotenv.config({ path: path.join(process.cwd(), 'bobthefixer.env') });
-    } catch (e) {
-      // Log to our logger if it's available, otherwise ignore silently
-      // In constructor, logger might not be fully initialized, so safest to ignore
-      // this.logger.debug('Error loading dotenv config during startup', e);
-    } finally {
-      // Restore original write functions
+      const globalConfigDir = path.join(os.homedir(), '.bobthefixer');
+      const globalCredentialsPath = path.join(globalConfigDir, 'credentials.env');
+      const localEnvPath = path.join(process.cwd(), 'bobthefixer.env');
+
+      if (process.env.SONAR_TOKEN) {
+        // Token is present - save to global file for future restarts
+        try {
+          if (!fs.existsSync(globalConfigDir)) {
+            fs.mkdirSync(globalConfigDir, { recursive: true });
+          }
+          const content = [
+            '# Bob the Fixer Global Credentials',
+            '# Auto-generated for Copilot CLI compatibility (issue #744)',
+            `SONAR_TOKEN=${process.env.SONAR_TOKEN}`,
+            `SONAR_URL=${process.env.SONAR_URL ?? 'http://localhost:9000'}`,
+          ].join('\n');
+          fs.writeFileSync(globalCredentialsPath, content);
+        } catch { /* ignore write errors */ }
+      } else {
+        // Token is missing - try to recover from global credentials file
+        dotenv.config({ path: globalCredentialsPath });
+      }
+
+      // Also load local project config for project-specific settings
+      dotenv.config({ path: localEnvPath });
+    } catch { /* ignore errors */ } finally {
       process.stdout.write = originalStdoutWrite;
       process.stderr.write = originalStderrWrite;
     }

@@ -235,7 +235,7 @@ check_container_runtime() {
         echo "  3) None (I will install manually)"
         echo ""
 
-        read -p "Choice (1-3): " choice
+        read -p "Choice (1-3): " choice < /dev/tty
 
         case $choice in
             1)
@@ -614,7 +614,43 @@ check_java() {
             print_success "Java $(java -version 2>&1 | head -n 1 | cut -d'"' -f2) - OK"
         else
             print_warning "Java version too old: $(java -version 2>&1 | head -n 1 | cut -d'"' -f2)"
-            print_info "Java 17+ recommended for sonar-scanner"
+            print_info "Java 17+ is required for sonar-scanner"
+            echo ""
+
+            if ask_yes_no "Do you want to install Java 17?" "y"; then
+                case "$OS_TYPE" in
+                    macos)
+                        brew install openjdk@17
+                        # Link it
+                        sudo ln -sfn $(brew --prefix)/opt/openjdk@17/libexec/openjdk.jdk /Library/Java/JavaVirtualMachines/openjdk-17.jdk 2>/dev/null || true
+                        ;;
+                    linux)
+                        # Install OpenJDK 17
+                        if command_exists dnf; then
+                            $(get_install_command) java-17-openjdk java-17-openjdk-devel
+                        elif command_exists apt-get; then
+                            $(get_install_command) openjdk-17-jdk
+                        else
+                            print_error "Unsupported package manager"
+                            return 1
+                        fi
+                        ;;
+                esac
+
+                if command_exists java; then
+                    local new_version=$(java -version 2>&1 | head -n 1 | cut -d'"' -f2 | cut -d'.' -f1)
+                    if [ "$new_version" -ge 17 ] 2>/dev/null; then
+                        print_success "Java 17 installed!"
+                    else
+                        print_warning "Java installed but version may not be 17+"
+                        print_info "You may need to update JAVA_HOME or PATH"
+                    fi
+                else
+                    print_warning "Java installation failed (not critical for Bob the Fixer)"
+                fi
+            else
+                print_warning "Java not upgraded - sonar-scanner may not work correctly"
+            fi
         fi
     fi
 }

@@ -92,19 +92,14 @@ export class ProjectManager {
     try {
       const configPath = path.join(this.workingDir, this.CONFIG_FILE);
       let currentConfig: ProjectConfig;
-      let fileContent = '';
 
       try {
-        fileContent = await fs.readFile(configPath, 'utf-8');
         currentConfig = await this.loadConfig(configPath);
       } catch {
-        // File doesn't exist, we will create it if we have env vars to save
-        currentConfig = {
-          sonarUrl: 'http://localhost:9000',
-          sonarToken: '',
-          sonarProjectKey: '',
-          createdAt: new Date().toISOString()
-        } as ProjectConfig;
+        // File doesn't exist - do NOT create it automatically
+        // The file should only be created by explicit user actions (auto_setup, scan with autoSetup, link_project)
+        // The Copilot workaround still works because the file is created during autosetup
+        return;
       }
 
       // vars to sync
@@ -126,19 +121,6 @@ export class ProjectManager {
           configToSave[config] = envValue;
           needsSave = true;
         }
-      }
-
-      // Special case: If config doesn't exist at all but we have tokens, create it
-      if (!fileContent && process.env.SONAR_TOKEN) {
-         // Need to generate project key if missing
-         if (!configToSave.sonarProjectKey) {
-            const context = await this.analyzeProject();
-            configToSave.sonarProjectKey = this.generateProjectKey(context);
-            configToSave.language = context.language.join(',');
-            configToSave.framework = context.framework;
-            configToSave.createdAt = new Date().toISOString();
-         }
-         needsSave = true;
       }
 
       if (needsSave) {

@@ -19,11 +19,11 @@ ask_yes_no() {
     while true; do
         if [ "$default" = "y" ] || [ "$default" = "Y" ]; then
             echo -ne "${YELLOW}${question}${NC} ${GRAY}[Y/n]${NC}: "
-            read answer
+            read answer < /dev/tty
             answer=${answer:-y}
         else
             echo -ne "${YELLOW}${question}${NC} ${GRAY}[y/N]${NC}: "
-            read answer
+            read answer < /dev/tty
             answer=${answer:-n}
         fi
 
@@ -65,7 +65,7 @@ ask_choice() {
 
     while true; do
         echo -ne "${YELLOW}Choice${NC} ${GRAY}[1-${num_options}]${NC}: "
-        read choice
+        read choice < /dev/tty
 
         if [ "$choice" -ge 1 ] 2>/dev/null && [ "$choice" -le "$num_options" ] 2>/dev/null; then
             return $((choice - 1))
@@ -98,7 +98,7 @@ ask_multiple() {
 
     while true; do
         echo -ne "${YELLOW}Selection${NC} ${GRAY}[1-${num_options}]${NC}: "
-        read selection
+        read selection < /dev/tty
 
         # Remove spaces and split by comma
         selection=$(echo "$selection" | tr -d ' ')
@@ -135,11 +135,11 @@ ask_string() {
     while true; do
         if [ -n "$default" ]; then
             echo -ne "${YELLOW}${question}${NC} ${GRAY}[${default}]${NC}: "
-            read answer
+            read answer < /dev/tty
             answer=${answer:-$default}
         else
             echo -ne "${YELLOW}${question}${NC}: "
-            read answer
+            read answer < /dev/tty
         fi
 
         # If no validator, accept any non-empty string
@@ -167,11 +167,11 @@ ask_password() {
     local password
 
     while true; do
-        read -s -p "$(echo -e ${YELLOW}${question}${NC}: )" password
+        read -s -p "$(echo -e ${YELLOW}${question}${NC}: )" password < /dev/tty
         echo ""
 
         if [ -n "$password" ]; then
-            read -s -p "$(echo -e ${YELLOW}Confirm password${NC}: )" password_confirm
+            read -s -p "$(echo -e ${YELLOW}Confirm password${NC}: )" password_confirm < /dev/tty
             echo ""
 
             if [ "$password" = "$password_confirm" ]; then
@@ -195,7 +195,7 @@ confirm_action() {
     echo -e "${RED}${EMOJI_WARNING} ${warning}${NC}"
     echo ""
     echo -ne "${YELLOW}Type${NC} ${RED}${confirm_word}${NC} ${YELLOW}to confirm${NC}: "
-    read confirmation
+    read confirmation < /dev/tty
 
     if [ "$confirmation" = "$confirm_word" ]; then
         return 0
@@ -208,7 +208,7 @@ confirm_action() {
 # Press any key to continue
 pause() {
     local message=${1:-"Press ENTER to continue"}
-    read -n 1 -s -r -p "$(echo -e ${ORANGE}${message}${NC})"
+    read -n 1 -s -r -p "$(echo -e ${ORANGE}${message}${NC})" < /dev/tty
     echo ""
 }
 
@@ -221,7 +221,7 @@ ask_yes_no_timeout() {
 
     echo -e "${YELLOW}${question}${NC} ${GRAY}[y/N] (auto: ${default} in ${timeout}s)${NC}"
 
-    if read -t $timeout answer; then
+    if read -t $timeout answer < /dev/tty; then
         # Convert to lowercase (bash 3.2 compatible)
         answer=$(echo "$answer" | tr '[:upper:]' '[:lower:]')
         case $answer in

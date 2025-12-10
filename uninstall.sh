@@ -59,6 +59,7 @@ main() {
     echo "  - Container volumes (data will be lost)"
     echo "  - MCP server registration from AI CLIs"
     echo "  - Bob configuration files (.env, logs)"
+    echo "  - Global credentials (~/.bobthefixer/)"
     echo "  - Build output (dist folders)"
     echo "  - Node.js dependencies (node_modules)"
     echo ""
@@ -265,6 +266,17 @@ clean_configuration() {
         print_info ".env not found"
     fi
 
+    # Remove global credentials directory (~/.bobthefixer/)
+    local global_config_dir="$HOME/.bobthefixer"
+    if [ -d "$global_config_dir" ]; then
+        print_step "Removing global credentials (~/.bobthefixer/)..."
+        rm -rf "$global_config_dir"
+        print_success "~/.bobthefixer/ removed"
+        ((files_removed++))
+    else
+        print_info "~/.bobthefixer/ not found"
+    fi
+
     # Remove logs directory
     if [ -d "logs" ]; then
         print_step "Removing logs directory..."
@@ -373,7 +385,8 @@ verify_removal() {
     # Check 3: Configuration files removed
     print_step "Checking configuration files..."
     if [ ! -f ".env" ] && [ ! -d "logs" ] && [ ! -d "packages/core/dist" ] && \
-       [ ! -d "node_modules" ] && [ ! -d "packages/core/node_modules" ]; then
+       [ ! -d "node_modules" ] && [ ! -d "packages/core/node_modules" ] && \
+       [ ! -d "$HOME/.bobthefixer" ]; then
         print_success "Configuration files removed"
         ((checks_passed++))
     else
@@ -420,6 +433,7 @@ show_success_summary() {
     echo -e "  ${GREEN}✓${NC} Container volumes"
     echo -e "  ${GREEN}✓${NC} MCP server registrations"
     echo -e "  ${GREEN}✓${NC} Configuration files (.env, logs)"
+    echo -e "  ${GREEN}✓${NC} Global credentials (~/.bobthefixer/)"
     echo -e "  ${GREEN}✓${NC} Build output (dist)"
     echo -e "  ${GREEN}✓${NC} Node.js dependencies (node_modules)"
     echo ""
