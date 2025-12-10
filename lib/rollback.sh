@@ -238,7 +238,7 @@ on_error() {
     echo "  3) Nothing (analyze manually)"
     echo ""
 
-    read -t 30 -p "Choice [1-3] (default: 3 in 30s): " choice || choice=3
+    read -t 30 -p "Choice [1-3] (default: 3 in 30s): " choice < /dev/tty || choice=3
 
     case $choice in
         1)

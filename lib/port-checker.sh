@@ -238,7 +238,7 @@ handle_port_conflict() {
     echo ""
 
     echo -ne "${YELLOW}Choice [1-4]${NC}: "
-    read choice
+    read choice < /dev/tty
 
     case $choice in
         1)
