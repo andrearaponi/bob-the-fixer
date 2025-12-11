@@ -1412,6 +1412,15 @@ describe('SonarQubeClient', () => {
       (fs.writeFile as any) = vi.fn(async () => undefined);
       (fs.unlink as any) = vi.fn(async () => undefined);
       (fs.stat as any) = vi.fn(async () => { throw { code: 'ENOENT' }; }); // No target directory
+      // Mock fs.access to return ENOENT for sonar-project.properties
+      // This simulates no properties file existing, so detected properties should be used
+      (fs.access as any) = vi.fn(async (filePath: string) => {
+        if (filePath.endsWith('sonar-project.properties')) {
+          throw { code: 'ENOENT' };
+        }
+        // Allow other files (like lock files)
+        return undefined;
+      });
     });
 
     it('should pass detected properties to triggerAnalysis', async () => {

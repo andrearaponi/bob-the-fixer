@@ -7,7 +7,7 @@ import * as path from 'path';
 import { ProjectContext } from '../universal/project-manager';
 import { sanitizeCommandArgs, shellQuote, sanitizeProjectKey, sanitizeUrl, maskToken } from '../infrastructure/security/input-sanitization.js';
 import { PreScanValidator } from '../core/scanning/validation/index.js';
-import { selectScanner, ScannerType, buildMavenCommand, buildGradleCommand, getScannerDescription } from './scanner-selection.js';
+import { selectScanner, ScannerType, buildMavenCommand, buildGradleCommand, getScannerDescription, ScannerOptions } from './scanner-selection.js';
 
 const execAsync = promisify(exec);
 
@@ -15,6 +15,11 @@ export class SonarQubeClient {
   public readonly client: AxiosInstance;  // Make public for diagnostic access
   private readonly projectKey: string;
   public readonly projectContext?: ProjectContext;
+
+  /**
+   * Scanner options (e.g., forceCliScanner)
+   */
+  private scannerOptions: ScannerOptions = {};
 
   /**
    * Stores the last scanner parameters built during triggerAnalysis.
@@ -69,6 +74,14 @@ export class SonarQubeClient {
   }
 
   /**
+   * Set scanner options (e.g., forceCliScanner)
+   * Call this before triggerAnalysis() to override default scanner selection
+   */
+  setScannerOptions(options: ScannerOptions): void {
+    this.scannerOptions = options;
+  }
+
+  /**
    * Trigger SonarQube analysis
    * Automatically selects the best scanner based on project context:
    * - Maven/Gradle + Java/Kotlin → Native plugin (better analysis)
@@ -89,9 +102,12 @@ export class SonarQubeClient {
       // Sanitize project path
       const safePath = path.resolve(projectPath);
 
-      // Select the best scanner based on project context
-      const scannerType = selectScanner(this.projectContext);
+      // Select the best scanner based on project context and options
+      const scannerType = selectScanner(this.projectContext, this.scannerOptions);
       console.error(`📊 Scanner selected: ${getScannerDescription(scannerType)}`);
+      if (this.scannerOptions.forceCliScanner) {
+        console.error(`⚡ CLI scanner forced via FORCE_CLI_SCANNER=true`);
+      }
 
       // Route to appropriate scanner method
       switch (scannerType) {
@@ -109,7 +125,7 @@ export class SonarQubeClient {
     } catch (error: any) {
       // Enhanced error handling with specific suggestions
       let errorMessage = `Analysis failed: ${error.message}`;
-      const scannerType = selectScanner(this.projectContext);
+      const scannerType = selectScanner(this.projectContext, this.scannerOptions);
 
       // Maven-specific error handling
       if (scannerType === ScannerType.MAVEN) {
@@ -306,105 +322,87 @@ export class SonarQubeClient {
   /**
    * Trigger analysis using SonarScanner CLI (sonar-scanner)
    * Used for non-JVM languages or projects without Maven/Gradle
-   * If detectedProperties are provided (from JavaAnalyzer), uses those instead of auto-detection
+   *
+   * Priority order:
+   * 1. If sonar-project.properties exists → use minimal params + missing critical only
+   * 2. If detected properties exist → use all detected properties
+   * 3. Otherwise → use language-specific defaults
    */
   private async triggerCliAnalysis(
     projectPath: string,
     detectedProperties?: Map<string, string>
   ): Promise<string[]> {
-    // If we have detected properties from JavaAnalyzer, use them
-    if (detectedProperties && detectedProperties.size > 0) {
-      console.error('🔧 Using SonarScanner CLI with JavaAnalyzer-detected properties');
-      return await this.triggerCliWithDetectedParams(projectPath, detectedProperties);
+    // Check if sonar-project.properties exists - if so, respect it!
+    const propsFile = path.join(projectPath, 'sonar-project.properties');
+    const hasPropertiesFile = await this.fileExists(propsFile);
+
+    let params: string[];
+
+    if (hasPropertiesFile) {
+      // CASE 1: Properties file exists - use minimal params + missing critical only
+      // sonar-scanner will read the file automatically
+      console.error('📄 Using sonar-project.properties for configuration');
+      params = this.buildAuthParams();
+
+      try {
+        const missingCritical = await this.getMissingCriticalProperties(projectPath, detectedProperties);
+        if (missingCritical.length > 0) {
+          console.error(`  ➕ Adding ${missingCritical.length} missing critical properties`);
+          params.push(...missingCritical);
+        } else {
+          console.error('  ✅ All critical properties present in config file');
+        }
+      } catch (error) {
+        console.error(`  ⚠️ Pre-scan validation skipped: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+    } else if (detectedProperties && detectedProperties.size > 0) {
+      // CASE 2: No properties file, but we have detected properties from analyzers
+      console.error('🔧 Using detected properties (no sonar-project.properties found)');
+      params = this.buildBaseParams();
+
+      console.error('📋 Detected properties:');
+      for (const [key, value] of detectedProperties) {
+        params.push(`-D${key}=${value}`);
+        const displayValue = key.includes('token') || key.includes('login')
+          ? '****'
+          : (value.length > 100 ? value.slice(0, 100) + '...' : value);
+        console.error(`   ${key}=${displayValue}`);
+      }
+    } else {
+      // CASE 3: No properties file, no detected properties - use language-specific defaults
+      console.error('🔧 Using language-specific defaults');
+      params = await this.buildLanguageSpecificParams(projectPath);
     }
 
-    // Fallback to legacy auto-detection
-    console.error('🔧 Using SonarScanner CLI for analysis (auto-detection)');
-
-    // Check if Java project is compiled (for Java projects using CLI)
-    await this.checkJavaCompilation(projectPath);
-
-    // Build and sanitize scanner parameters
-    const scannerParams = await this.buildScannerParameters(projectPath);
-    const sanitizedParams = sanitizeCommandArgs(scannerParams);
-
-    // Store params immediately after building
-    this.lastBuiltScannerParams = sanitizedParams;
-
-    const command = 'sonar-scanner';
-    console.error(`Running: ${command} with ${sanitizedParams.length} parameters`);
-    console.error(`Masked token used: ${maskToken(this.getToken())}`);
-
-    const { stdout, stderr } = await execAsync(
-      `${command} ${sanitizedParams.map(arg => shellQuote(arg)).join(' ')}`,
-      {
-        cwd: projectPath,
-        maxBuffer: 10 * 1024 * 1024,
-        timeout: 300000, // 5 minutes
-        env: { ...process.env, PATH: process.env.PATH }
-      }
-    );
-
-    console.error('✅ SonarScanner CLI analysis completed successfully');
-    if (stdout) console.error('Analysis output:', stdout);
-    if (stderr) console.error('Analysis warnings:', stderr);
-
-    return sanitizedParams;
+    // Execute scanner with built params
+    return await this.runCliScanner(projectPath, params);
   }
 
   /**
    * Trigger CLI analysis with pre-detected properties from JavaAnalyzer/PreScanValidator
-   * Used when Maven/Gradle fails, or when running CLI with detected properties
+   * Used when Maven/Gradle fails as fallback
    */
   private async triggerCliWithDetectedParams(
     projectPath: string,
     detectedProperties: Map<string, string>
   ): Promise<string[]> {
-    // Check if Java project is compiled
-    await this.checkJavaCompilation(projectPath);
+    console.error('🔧 Using SonarScanner CLI with detected properties (Maven/Gradle fallback)');
 
-    // Build base parameters
-    const params: string[] = [
-      `-Dsonar.projectKey=${this.projectKey}`,
-      `-Dsonar.host.url=${this.client.defaults.baseURL}`,
-      `-Dsonar.login=${this.getToken()}`,
-      `-Dsonar.projectVersion=${Date.now()}`
-    ];
+    // Build params using helpers
+    const params = this.buildBaseParams();
 
-    // Add all detected properties from JavaAnalyzer
-    console.error('📋 Using detected properties from JavaAnalyzer:');
+    // Add all detected properties
+    console.error('📋 Detected properties:');
     for (const [key, value] of detectedProperties) {
       params.push(`-D${key}=${value}`);
-      // Log key properties (mask sensitive values)
-      if (key.includes('token') || key.includes('login')) {
-        console.error(`   ${key}=****`);
-      } else {
-        console.error(`   ${key}=${value.length > 100 ? value.slice(0, 100) + '...' : value}`);
-      }
+      const displayValue = key.includes('token') || key.includes('login')
+        ? '****'
+        : (value.length > 100 ? value.slice(0, 100) + '...' : value);
+      console.error(`   ${key}=${displayValue}`);
     }
 
-    const sanitizedParams = sanitizeCommandArgs(params);
-    this.lastBuiltScannerParams = sanitizedParams;
-
-    const command = 'sonar-scanner';
-    console.error(`Running: ${command} with ${sanitizedParams.length} parameters (detected)`);
-    console.error(`Masked token used: ${maskToken(this.getToken())}`);
-
-    const { stdout, stderr } = await execAsync(
-      `${command} ${sanitizedParams.map(arg => shellQuote(arg)).join(' ')}`,
-      {
-        cwd: projectPath,
-        maxBuffer: 10 * 1024 * 1024,
-        timeout: 300000, // 5 minutes
-        env: { ...process.env, PATH: process.env.PATH }
-      }
-    );
-
-    console.error('✅ SonarScanner CLI analysis completed successfully (with detected properties)');
-    if (stdout) console.error('Analysis output:', stdout);
-    if (stderr) console.error('Analysis warnings:', stderr);
-
-    return sanitizedParams;
+    // Execute scanner using shared helper
+    return await this.runCliScanner(projectPath, params);
   }
 
   async triggerDotnetAnalysis(projectPath: string): Promise<void> {
@@ -856,6 +854,103 @@ export class SonarQubeClient {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
+  // ============================================================================
+  // SCANNER PARAMETER BUILDING HELPERS
+  // ============================================================================
+
+  /**
+   * Build authentication parameters (always needed for CLI scanner)
+   * Does NOT include projectKey - use buildBaseParams() for that
+   */
+  private buildAuthParams(): string[] {
+    return [
+      `-Dsonar.host.url=${this.client.defaults.baseURL}`,
+      `-Dsonar.login=${this.getToken()}`,
+      `-Dsonar.projectVersion=${Date.now()}`
+    ];
+  }
+
+  /**
+   * Build base parameters with project key (for when no properties file exists)
+   */
+  private buildBaseParams(): string[] {
+    return [
+      `-Dsonar.projectKey=${this.projectKey}`,
+      ...this.buildAuthParams()
+    ];
+  }
+
+  /**
+   * Get missing critical properties from existing config
+   * Returns only properties that are MISSING from the config file
+   * @param projectPath Path to the project
+   * @param detectedProperties Optional detected properties from analyzers
+   */
+  private async getMissingCriticalProperties(
+    projectPath: string,
+    detectedProperties?: Map<string, string>
+  ): Promise<string[]> {
+    const params: string[] = [];
+
+    const preScanValidator = new PreScanValidator();
+    const validationResult = await preScanValidator.validate(projectPath);
+
+    if (validationResult.existingConfig?.missingCritical) {
+      for (const missing of validationResult.existingConfig.missingCritical) {
+        // First check in passed detected properties
+        const detectedValue = detectedProperties?.get(missing);
+        if (detectedValue) {
+          params.push(`-D${missing}=${detectedValue}`);
+          console.error(`  ➕ Adding missing critical: ${missing}=${detectedValue}`);
+          continue;
+        }
+        // Otherwise check in validation-detected properties
+        const detected = validationResult.detectedProperties.find(p => p.key === missing);
+        if (detected) {
+          params.push(`-D${missing}=${detected.value}`);
+          console.error(`  ➕ Adding missing critical: ${missing}=${detected.value}`);
+        }
+      }
+    }
+
+    return params;
+  }
+
+  /**
+   * Execute sonar-scanner CLI with given parameters
+   * Separated from parameter building for clarity
+   */
+  private async runCliScanner(projectPath: string, params: string[]): Promise<string[]> {
+    await this.checkJavaCompilation(projectPath);
+
+    const sanitizedParams = sanitizeCommandArgs(params);
+    this.lastBuiltScannerParams = sanitizedParams;
+
+    const command = 'sonar-scanner';
+    console.error(`Running: ${command} with ${sanitizedParams.length} parameters`);
+    console.error(`Masked token used: ${maskToken(this.getToken())}`);
+
+    const { stdout, stderr } = await execAsync(
+      `${command} ${sanitizedParams.map(arg => shellQuote(arg)).join(' ')}`,
+      {
+        cwd: projectPath,
+        maxBuffer: 10 * 1024 * 1024,
+        timeout: 300000, // 5 minutes
+        env: { ...process.env, PATH: process.env.PATH }
+      }
+    );
+
+    console.error('✅ SonarScanner CLI analysis completed successfully');
+    if (stdout) console.error('Analysis output:', stdout);
+    if (stderr) console.error('Analysis warnings:', stderr);
+
+    return sanitizedParams;
+  }
+
+  // ============================================================================
+  // END SCANNER PARAMETER BUILDING HELPERS
+  // ============================================================================
+
   /**
    * Get detailed rule information from SonarQube
    */
@@ -1086,68 +1181,12 @@ export class SonarQubeClient {
   }
 
   /**
-   * Build language-specific scanner parameters
+   * Build parameters using language-specific defaults
+   * Used when no sonar-project.properties exists and no detected properties available
+   * NOTE: This method does NOT check for properties file - that's done in triggerCliAnalysis()
    */
-  private async buildScannerParameters(projectPath: string): Promise<string[]> {
-    // Check if sonar-project.properties exists
-    const propsFile = path.join(projectPath, 'sonar-project.properties');
-    const hasPropertiesFile = await this.fileExists(propsFile);
-
-    if (hasPropertiesFile) {
-      // Use minimal parameters + validate and augment with missing critical properties
-      console.error('📄 Using sonar-project.properties file for configuration');
-
-      const params = [
-        `-Dsonar.host.url=${this.client.defaults.baseURL}`,
-        `-Dsonar.login=${this.getToken()}`,
-        `-Dsonar.projectVersion=${Date.now()}`
-      ];
-
-      // Run universal pre-scan validation to detect missing properties
-      try {
-        const preScanValidator = new PreScanValidator();
-        const validationResult = await preScanValidator.validate(projectPath);
-
-        // Add missing critical properties from detection (not in existing config)
-        if (validationResult.existingConfig) {
-          const missingCritical = validationResult.existingConfig.missingCritical;
-
-          for (const missing of missingCritical) {
-            const detected = validationResult.detectedProperties.find(p => p.key === missing);
-            if (detected) {
-              params.push(`-D${missing}=${detected.value}`);
-              console.error(`  ➕ Adding missing critical: ${missing}=${detected.value}`);
-            }
-          }
-
-          // Log suggestions for recommended properties
-          const missingRecommended = validationResult.existingConfig.missingRecommended;
-          if (missingRecommended.length > 0) {
-            console.error('\n📝 Recommended additions to sonar-project.properties:');
-            for (const rec of missingRecommended) {
-              const detected = validationResult.detectedProperties.find(p => p.key === rec);
-              if (detected) {
-                console.error(`    ${rec}=${detected.value}`);
-              }
-            }
-          }
-
-          console.error(`\n📊 Config completeness: ${validationResult.existingConfig.completenessScore}%`);
-        }
-      } catch (error) {
-        // Validation failed - continue with minimal params (best-effort)
-        console.error(`  ⚠️ Pre-scan validation skipped: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      }
-
-      return params;
-    }
-
-    const params = [
-      `-Dsonar.projectKey=${this.projectKey}`,
-      `-Dsonar.host.url=${this.client.defaults.baseURL}`,
-      `-Dsonar.login=${this.getToken()}`,
-      `-Dsonar.projectVersion=${Date.now()}` // Force new analysis version
-    ];
+  private async buildLanguageSpecificParams(projectPath: string): Promise<string[]> {
+    const params = this.buildBaseParams();
 
     if (!this.projectContext) {
       // Fallback to basic parameters

@@ -93,6 +93,11 @@ export class ScanOrchestrator {
       projectContext
     );
 
+    // 5.5 Apply scanner options from config (e.g., forceCliScanner)
+    if (config.forceCliScanner !== undefined) {
+      sonarClient.setScannerOptions({ forceCliScanner: config.forceCliScanner });
+    }
+
     // 6. Execute analysis with retry logic - capture the exact parameters used
     // Pass validation result to enable intelligent fallback with detected properties
     const projectPath = this.projectManager.getWorkingDirectory();
@@ -101,7 +106,7 @@ export class ScanOrchestrator {
     // 6.5 Auto-generate properties file with EXACT scanner parameters
     // Skip for Maven/Gradle - they don't need sonar-project.properties
     const propertiesFileExists = validationResult?.existingConfig?.exists ?? false;
-    const scannerType = selectScanner(projectContext);
+    const scannerType = selectScanner(projectContext, { forceCliScanner: config.forceCliScanner });
     const usesBuildToolPlugin = scannerType === ScannerType.MAVEN || scannerType === ScannerType.GRADLE;
 
     if (!propertiesFileExists && !usesBuildToolPlugin && usedScannerParams && usedScannerParams.length > 0) {
@@ -126,7 +131,7 @@ export class ScanOrchestrator {
     const projectMetrics = await this.fetchProjectMetrics(sonarClient);
 
     // 8. Build and return scan result
-    return this.buildScanResult(config, issues, securityHotspots, projectContext, projectMetrics, validationResult);
+    return this.buildScanResult(config, issues, securityHotspots, projectContext, projectMetrics, validationResult, scannerType, config.forceCliScanner);
   }
 
   /**
@@ -555,7 +560,9 @@ export class ScanOrchestrator {
     hotspots: any[],
     projectContext: ProjectContext,
     projectMetrics?: any,
-    validationResult?: PreScanValidationResult
+    validationResult?: PreScanValidationResult,
+    scannerType?: ScannerType,
+    forceCliScanner?: boolean
   ): ScanResult {
     const issuesBySeverity: Record<string, number> = {};
     const issuesByType: Record<string, number> = {};
@@ -660,7 +667,9 @@ export class ScanOrchestrator {
           confidence: p.confidence
         }))
       } : undefined,
-      configSource
+      configSource,
+      scannerType: scannerType as 'maven' | 'gradle' | 'cli' | undefined,
+      scannerForced: forceCliScanner
     };
   }
 

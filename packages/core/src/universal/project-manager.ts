@@ -10,6 +10,7 @@ export interface ProjectConfig {
   language?: string;
   framework?: string;
   logLevel?: string;
+  forceCliScanner?: boolean;
 }
 
 export interface ProjectContext {
@@ -79,6 +80,11 @@ export class ProjectManager {
 
     // Ensure defaults
     if (!config.sonarUrl) config.sonarUrl = 'http://localhost:9000';
+
+    // Parse boolean for forceCliScanner
+    if (config.forceCliScanner !== undefined) {
+      config.forceCliScanner = config.forceCliScanner === 'true' || config.forceCliScanner === true;
+    }
 
     return config as ProjectConfig;
   }
@@ -181,6 +187,7 @@ export class ProjectManager {
       config.language ? `LANGUAGE=${config.language}` : '',
       config.framework ? `FRAMEWORK=${config.framework}` : '',
       config.logLevel ? `LOG_LEVEL=${config.logLevel}` : '',
+      config.forceCliScanner !== undefined ? `FORCE_CLI_SCANNER=${config.forceCliScanner}` : '',
     ].filter(Boolean).join('\n');
 
     await fs.writeFile(configPath, content, 'utf-8');
@@ -416,7 +423,8 @@ export class ProjectManager {
       'CREATED_AT': 'createdAt',
       'LANGUAGE': 'language',
       'FRAMEWORK': 'framework',
-      'LOG_LEVEL': 'logLevel'
+      'LOG_LEVEL': 'logLevel',
+      'FORCE_CLI_SCANNER': 'forceCliScanner'
     };
     return mapping[key] || key.toLowerCase();
   }

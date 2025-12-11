@@ -104,6 +104,10 @@ export interface ScanResult {
   };
   /** How the scan configuration was obtained */
   configSource?: 'properties-file' | 'auto-detected' | 'cli-params';
+  /** Scanner type used for analysis */
+  scannerType?: 'maven' | 'gradle' | 'cli';
+  /** Whether CLI scanner was forced via FORCE_CLI_SCANNER */
+  scannerForced?: boolean;
 }
 
 export interface Issue {

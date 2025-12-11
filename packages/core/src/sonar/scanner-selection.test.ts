@@ -108,6 +108,78 @@ describe('Scanner Selection', () => {
     });
   });
 
+  describe('selectScanner with forceCliScanner option', () => {
+    it('should return CLI when forceCliScanner is true for Maven project', () => {
+      const context: ProjectContext = {
+        path: '/test',
+        name: 'test-project',
+        language: ['java'],
+        buildTool: 'maven'
+      };
+
+      const result = selectScanner(context, { forceCliScanner: true });
+
+      expect(result).toBe(ScannerType.CLI);
+    });
+
+    it('should return CLI when forceCliScanner is true for Gradle project', () => {
+      const context: ProjectContext = {
+        path: '/test',
+        name: 'test-project',
+        language: ['kotlin'],
+        buildTool: 'gradle'
+      };
+
+      const result = selectScanner(context, { forceCliScanner: true });
+
+      expect(result).toBe(ScannerType.CLI);
+    });
+
+    it('should return MAVEN when forceCliScanner is false', () => {
+      const context: ProjectContext = {
+        path: '/test',
+        name: 'test-project',
+        language: ['java'],
+        buildTool: 'maven'
+      };
+
+      expect(selectScanner(context, { forceCliScanner: false })).toBe(ScannerType.MAVEN);
+    });
+
+    it('should return MAVEN when forceCliScanner option is empty object', () => {
+      const context: ProjectContext = {
+        path: '/test',
+        name: 'test-project',
+        language: ['java'],
+        buildTool: 'maven'
+      };
+
+      expect(selectScanner(context, {})).toBe(ScannerType.MAVEN);
+    });
+
+    it('should return MAVEN when no options provided (backward compatible)', () => {
+      const context: ProjectContext = {
+        path: '/test',
+        name: 'test-project',
+        language: ['java'],
+        buildTool: 'maven'
+      };
+
+      expect(selectScanner(context)).toBe(ScannerType.MAVEN);
+    });
+
+    it('should return CLI for non-JVM project even without forceCliScanner', () => {
+      const context: ProjectContext = {
+        path: '/test',
+        name: 'test-project',
+        language: ['javascript'],
+        buildTool: 'npm'
+      };
+
+      expect(selectScanner(context, { forceCliScanner: false })).toBe(ScannerType.CLI);
+    });
+  });
+
   describe('buildMavenCommand', () => {
     it('should build basic Maven sonar command', () => {
       const result = buildMavenCommand({
