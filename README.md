@@ -2,9 +2,9 @@
 
 **Intelligent AI system for code quality & security analysis with SonarQube.** Achieve **ZERO technical debt** through automated analysis, security scanning, and natural language interaction with your AI assistant.
 
-> 🚀 **Release**: 0.3.8 - Installer fixes & Java 17 upgrade prompt
+> 🚀 **Release**: 0.3.9 - Force CLI scanner & scanner info in output
 
-![Version](https://img.shields.io/badge/version-0.3.8-blue)
+![Version](https://img.shields.io/badge/version-0.3.9-blue)
 ![License](https://img.shields.io/badge/license-AGPL--3.0-green)
 ![Node](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen)
 ![Container](https://img.shields.io/badge/podman-recommended-blue)
@@ -111,9 +111,9 @@ When an update is available, Bob will show a banner with the update command:
 
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  UPDATE AVAILABLE: Bob the Fixer 0.3.8 (Code update only)
-  Current version: 0.3.7
-  Notes: Bug fixes and improvements
+  UPDATE AVAILABLE: Bob the Fixer 0.3.9 (Code update only)
+  Current version: 0.3.8
+  Notes: Force CLI scanner & scanner info in output
   Run: ./update.sh
   https://github.com/andrearaponi/bob-the-fixer/releases
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

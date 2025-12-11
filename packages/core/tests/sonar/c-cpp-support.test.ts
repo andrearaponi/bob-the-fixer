@@ -347,13 +347,13 @@ describe('C/C++ Language Support', () => {
     });
   });
 
-  describe('integration with buildScannerParameters', () => {
+  describe('integration with buildLanguageSpecificParams', () => {
     it('should build full scanner parameters for C project', async () => {
       // Arrange
-      const buildScannerParameters = (client as any).buildScannerParameters?.bind(client);
+      const buildLanguageSpecificParams = (client as any).buildLanguageSpecificParams?.bind(client);
 
-      if (!buildScannerParameters) {
-        expect(buildScannerParameters).toBeDefined();
+      if (!buildLanguageSpecificParams) {
+        expect(buildLanguageSpecificParams).toBeDefined();
         return;
       }
 
@@ -363,7 +363,7 @@ describe('C/C++ Language Support', () => {
       };
 
       // Act
-      const params = await buildScannerParameters(cFixtureDir);
+      const params = await buildLanguageSpecificParams(cFixtureDir);
 
       // Assert
       const sourcesParam = params.find((p: string) => p.startsWith('-Dsonar.sources='));
@@ -379,10 +379,10 @@ describe('C/C++ Language Support', () => {
 
     it('should build full scanner parameters for C++ project', async () => {
       // Arrange
-      const buildScannerParameters = (client as any).buildScannerParameters?.bind(client);
+      const buildLanguageSpecificParams = (client as any).buildLanguageSpecificParams?.bind(client);
 
-      if (!buildScannerParameters) {
-        expect(buildScannerParameters).toBeDefined();
+      if (!buildLanguageSpecificParams) {
+        expect(buildLanguageSpecificParams).toBeDefined();
         return;
       }
 
@@ -392,7 +392,7 @@ describe('C/C++ Language Support', () => {
       };
 
       // Act
-      const params = await buildScannerParameters(cppFixtureDir);
+      const params = await buildLanguageSpecificParams(cppFixtureDir);
 
       // Assert
       const sourcesParam = params.find((p: string) => p.startsWith('-Dsonar.sources='));

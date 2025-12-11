@@ -49,12 +49,31 @@ const JVM_LANGUAGES = ['java', 'kotlin', 'scala', 'groovy'];
 const NATIVE_PLUGIN_BUILD_TOOLS = ['maven', 'gradle'];
 
 /**
+ * Options for scanner selection
+ */
+export interface ScannerOptions {
+  /** Force CLI scanner even for Maven/Gradle projects */
+  forceCliScanner?: boolean;
+}
+
+/**
  * Select the best scanner type based on project context
  *
  * For Java/Kotlin with Maven/Gradle → Use native plugin (better classpath resolution)
  * For everything else → Use sonar-scanner CLI
+ *
+ * @param context Project context with language and build tool info
+ * @param options Scanner options (e.g., forceCliScanner)
  */
-export function selectScanner(context: ProjectContext | undefined): ScannerType {
+export function selectScanner(
+  context: ProjectContext | undefined,
+  options?: ScannerOptions
+): ScannerType {
+  // If forceCliScanner is true, always use CLI
+  if (options?.forceCliScanner) {
+    return ScannerType.CLI;
+  }
+
   if (!context) {
     return ScannerType.CLI;
   }

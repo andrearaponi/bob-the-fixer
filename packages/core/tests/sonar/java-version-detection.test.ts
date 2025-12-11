@@ -116,7 +116,7 @@ describe('Java Version Detection', () => {
     });
   });
 
-  describe('integration with buildScannerParameters', () => {
+  describe('integration with buildLanguageSpecificParams', () => {
     it('should include Java version in final scanner parameters', async () => {
       // Arrange - Mock the addMavenLibraries method to prevent Maven execution
       const originalAddMavenLibraries = (client as any).addMavenLibraries;
@@ -124,10 +124,10 @@ describe('Java Version Detection', () => {
         (client as any).addMavenLibraries = vi.fn().mockResolvedValue(undefined);
       }
 
-      const buildScannerParameters = (client as any).buildScannerParameters?.bind(client);
+      const buildLanguageSpecificParams = (client as any).buildLanguageSpecificParams?.bind(client);
 
-      if (!buildScannerParameters) {
-        expect(buildScannerParameters).toBeDefined();
+      if (!buildLanguageSpecificParams) {
+        expect(buildLanguageSpecificParams).toBeDefined();
         return;
       }
 
@@ -137,7 +137,7 @@ describe('Java Version Detection', () => {
       };
 
       // Act
-      const params = await buildScannerParameters(fixtureDir);
+      const params = await buildLanguageSpecificParams(fixtureDir);
 
       // Assert
       const versionParam = params.find((p: string) => p.startsWith('-Dsonar.java.source='));

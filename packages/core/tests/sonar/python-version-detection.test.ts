@@ -254,13 +254,13 @@ describe('Python Version Detection', () => {
     });
   });
 
-  describe('integration with buildScannerParameters', () => {
+  describe('integration with buildLanguageSpecificParams', () => {
     it('should include Python version in final scanner parameters', async () => {
       // Arrange
-      const buildScannerParameters = (client as any).buildScannerParameters?.bind(client);
+      const buildLanguageSpecificParams = (client as any).buildLanguageSpecificParams?.bind(client);
 
-      if (!buildScannerParameters) {
-        expect(buildScannerParameters).toBeDefined();
+      if (!buildLanguageSpecificParams) {
+        expect(buildLanguageSpecificParams).toBeDefined();
         return;
       }
 
@@ -270,7 +270,7 @@ describe('Python Version Detection', () => {
       };
 
       // Act
-      const params = await buildScannerParameters(fixtureDir);
+      const params = await buildLanguageSpecificParams(fixtureDir);
 
       // Assert - should have Python-specific parameters
       const sourcesParam = params.find((p: string) => p.startsWith('-Dsonar.sources='));

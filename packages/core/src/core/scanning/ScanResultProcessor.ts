@@ -12,6 +12,21 @@ export class ScanResultProcessor {
   static formatAsTextSummary(result: ScanResult): string {
     let summary = `SONARQUBE ANALYSIS RESULTS\n\n`;
     summary += `Project: ${result.projectKey}\n`;
+
+    // Show scanner type used
+    if (result.scannerType) {
+      const scannerLabels: Record<string, string> = {
+        'maven': 'Maven Plugin (mvn sonar:sonar)',
+        'gradle': 'Gradle Plugin (./gradlew sonar)',
+        'cli': 'SonarScanner CLI'
+      };
+      summary += `Scanner: ${scannerLabels[result.scannerType] || result.scannerType}`;
+      if (result.scannerForced) {
+        summary += ` [FORCED via FORCE_CLI_SCANNER=true]`;
+      }
+      summary += `\n`;
+    }
+
     summary += `Total Issues: ${result.totalIssues}\n`;
 
     // Add Java compilation warning if applicable

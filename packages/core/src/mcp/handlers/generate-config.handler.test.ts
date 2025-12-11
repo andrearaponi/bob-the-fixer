@@ -388,4 +388,134 @@ describe('handleGenerateConfig', () => {
       expect(result.content[0].text).toContain('📦 Backup:');
     });
   });
+
+  describe('project structure display', () => {
+    beforeEach(() => {
+      // Mock fs.readdir for directory tree generation
+      vi.mocked(fs.readdir).mockImplementation(async (dirPath: any, options?: any) => {
+        const basePath = dirPath as string;
+        if (basePath.endsWith('test-project')) {
+          return [
+            { name: 'src', isDirectory: () => true, isFile: () => false },
+            { name: 'tests', isDirectory: () => true, isFile: () => false },
+            { name: 'package.json', isDirectory: () => false, isFile: () => true },
+            { name: 'tsconfig.json', isDirectory: () => false, isFile: () => true }
+          ] as any;
+        }
+        if (basePath.includes('src')) {
+          return [
+            { name: 'components', isDirectory: () => true, isFile: () => false },
+            { name: 'utils', isDirectory: () => true, isFile: () => false }
+          ] as any;
+        }
+        return [];
+      });
+    });
+
+    it('should include project structure section in output', async () => {
+      const result = await handleGenerateConfig({
+        projectPath: '/path/to/test-project',
+        config: { sources: 'src' }
+      });
+
+      expect(result.content[0].text).toContain('## Project Structure');
+    });
+
+    it('should display directory tree with directories', async () => {
+      const result = await handleGenerateConfig({
+        projectPath: '/path/to/test-project',
+        config: { sources: 'src' }
+      });
+
+      expect(result.content[0].text).toContain('src/');
+      expect(result.content[0].text).toContain('tests/');
+    });
+
+    it('should display important files in tree', async () => {
+      const result = await handleGenerateConfig({
+        projectPath: '/path/to/test-project',
+        config: { sources: 'src' }
+      });
+
+      expect(result.content[0].text).toContain('package.json');
+      expect(result.content[0].text).toContain('tsconfig.json');
+    });
+
+    it('should use ASCII tree connectors', async () => {
+      const result = await handleGenerateConfig({
+        projectPath: '/path/to/test-project',
+        config: { sources: 'src' }
+      });
+
+      // Should contain tree connectors
+      const text = result.content[0].text;
+      expect(text).toMatch(/[├└]── /);
+    });
+
+    it('should skip node_modules and other common directories', async () => {
+      vi.mocked(fs.readdir).mockImplementation(async () => [
+        { name: 'src', isDirectory: () => true, isFile: () => false },
+        { name: 'node_modules', isDirectory: () => true, isFile: () => false },
+        { name: '.git', isDirectory: () => true, isFile: () => false }
+      ] as any);
+
+      const result = await handleGenerateConfig({
+        projectPath: '/path/to/test-project',
+        config: { sources: 'src' }
+      });
+
+      const text = result.content[0].text;
+      // Extract just the Project Structure section to check
+      const structureMatch = text.match(/## Project Structure\n```\n([\s\S]*?)\n```/);
+      expect(structureMatch).toBeTruthy();
+      const structureSection = structureMatch![1];
+
+      expect(structureSection).toContain('src/');
+      expect(structureSection).not.toContain('node_modules');
+      expect(structureSection).not.toContain('.git');
+    });
+
+    it('should handle tree generation errors gracefully', async () => {
+      vi.mocked(fs.readdir).mockRejectedValue(new Error('Permission denied'));
+
+      const result = await handleGenerateConfig({
+        config: { sources: 'src' }
+      });
+
+      // Should still succeed, just without tree
+      expect(result.content[0].text).toContain('✅ sonar-project.properties generated successfully');
+    });
+  });
+
+  describe('tree command suggestion', () => {
+    it('should include tip about tree command in Next Steps', async () => {
+      const result = await handleGenerateConfig({
+        config: { sources: 'src' }
+      });
+
+      expect(result.content[0].text).toContain('**Tip**');
+      expect(result.content[0].text).toContain('tree');
+    });
+
+    it('should show correct tree command with exclusions', async () => {
+      const result = await handleGenerateConfig({
+        config: { sources: 'src' }
+      });
+
+      expect(result.content[0].text).toContain('tree -I');
+      expect(result.content[0].text).toContain('node_modules');
+    });
+
+    it('should place tip before sonar_scan_project instruction', async () => {
+      const result = await handleGenerateConfig({
+        config: { sources: 'src' }
+      });
+
+      const text = result.content[0].text;
+      const tipIndex = text.indexOf('**Tip**');
+      const scanIndex = text.indexOf('sonar_scan_project');
+
+      expect(tipIndex).toBeLessThan(scanIndex);
+    });
+  });
 });

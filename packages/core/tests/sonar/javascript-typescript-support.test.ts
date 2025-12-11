@@ -238,13 +238,13 @@ describe('JavaScript/TypeScript Support', () => {
     });
   });
 
-  describe('integration with buildScannerParameters', () => {
+  describe('integration with buildLanguageSpecificParams', () => {
     it('should build full scanner parameters for JavaScript/TypeScript project', async () => {
       // Arrange
-      const buildScannerParameters = (client as any).buildScannerParameters?.bind(client);
+      const buildLanguageSpecificParams = (client as any).buildLanguageSpecificParams?.bind(client);
 
-      if (!buildScannerParameters) {
-        expect(buildScannerParameters).toBeDefined();
+      if (!buildLanguageSpecificParams) {
+        expect(buildLanguageSpecificParams).toBeDefined();
         return;
       }
 
@@ -254,7 +254,7 @@ describe('JavaScript/TypeScript Support', () => {
       };
 
       // Act
-      const params = await buildScannerParameters(fixtureDir);
+      const params = await buildLanguageSpecificParams(fixtureDir);
 
       // Assert
       const sourcesParam = params.find((p: string) => p.startsWith('-Dsonar.sources='));

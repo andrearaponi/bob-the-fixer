@@ -655,6 +655,43 @@ check_java() {
     fi
 }
 
+# Check tree (required for project structure visualization in sonar_generate_config)
+check_tree() {
+    print_step "Checking tree..."
+
+    if ! command_exists tree; then
+        print_warning "tree not found!"
+        echo ""
+        echo "tree is required for project structure visualization."
+        echo ""
+
+        if ask_yes_no "Do you want to install tree?" "y"; then
+            case "$OS_TYPE" in
+                macos)
+                    brew install tree
+                    ;;
+                linux)
+                    $(get_install_command) tree
+                    ;;
+            esac
+
+            if command_exists tree; then
+                print_success "tree installed!"
+            else
+                print_error "tree installation failed"
+                DEPENDENCIES_OK=false
+                return 1
+            fi
+        else
+            print_error "tree is required to continue"
+            DEPENDENCIES_OK=false
+            return 1
+        fi
+    else
+        print_success "tree - OK"
+    fi
+}
+
 # Check sonar-scanner (optional)
 check_sonar_scanner() {
     print_step "Checking sonar-scanner (optional)..."
@@ -716,6 +753,7 @@ check_all_dependencies() {
     check_jq
     check_curl
     check_openssl
+    check_tree
 
     # Java and sonar-scanner are optional
     check_java || true  # Don't fail if Java is not installed

@@ -12,6 +12,75 @@ import { sanitizePath } from '../../infrastructure/security/input-sanitization.j
 import { PreScanValidator } from '../../core/scanning/validation/PreScanValidator.js';
 import { processLibraryPaths, countLibraries, summarizeLibraries, LibraryPathStrategy } from '../../core/scanning/utils/path-utils.js';
 import * as path from 'path';
+import * as fs from 'fs/promises';
+
+/**
+ * Generate abbreviated directory tree for project structure overview
+ */
+async function generateAbbreviatedTree(projectPath: string): Promise<string> {
+  const lines: string[] = [];
+  const projectName = path.basename(projectPath);
+  lines.push(`${projectName}/`);
+
+  const skipDirs = new Set([
+    'node_modules', 'target', 'build', 'dist', 'out', 'bin', 'obj',
+    '.git', '.svn', '.hg', '.idea', '.vscode', 'vendor', '__pycache__',
+    '.gradle', '.m2', 'coverage', '.next', '.nuxt'
+  ]);
+
+  const importantFiles = new Set([
+    'pom.xml', 'build.gradle', 'build.gradle.kts', 'package.json',
+    'tsconfig.json', 'go.mod', 'Cargo.toml', 'requirements.txt',
+    'pyproject.toml', 'setup.py', 'sonar-project.properties',
+    'bobthefixer.env', '.gitignore', 'README.md', 'CMakeLists.txt'
+  ]);
+
+  const maxLines = 30;
+  const maxDepth = 2;
+
+  const generateTree = async (dir: string, prefix: string = '', depth: number = 0) => {
+    if (depth > maxDepth || lines.length >= maxLines) return;
+
+    try {
+      const entries = await fs.readdir(dir, { withFileTypes: true });
+      const filtered = entries.filter(e =>
+        !skipDirs.has(e.name) && !e.name.startsWith('.')
+      );
+
+      filtered.sort((a, b) => {
+        if (a.isDirectory() && !b.isDirectory()) return -1;
+        if (!a.isDirectory() && b.isDirectory()) return 1;
+        return a.name.localeCompare(b.name);
+      });
+
+      for (let i = 0; i < filtered.length && lines.length < maxLines; i++) {
+        const entry = filtered[i];
+        const isLast = i === filtered.length - 1;
+        const connector = isLast ? '└── ' : '├── ';
+        const childPrefix = isLast ? '    ' : '│   ';
+
+        if (entry.isDirectory()) {
+          lines.push(`${prefix}${connector}${entry.name}/`);
+          await generateTree(path.join(dir, entry.name), prefix + childPrefix, depth + 1);
+        } else if (importantFiles.has(entry.name) ||
+                   entry.name.endsWith('.csproj') ||
+                   entry.name.endsWith('.sln')) {
+          lines.push(`${prefix}${connector}${entry.name}`);
+        }
+      }
+    } catch {
+      // Ignore errors - directory might not be readable
+    }
+  };
+
+  await generateTree(projectPath);
+
+  if (lines.length >= maxLines) {
+    lines.push('... (truncated)');
+  }
+
+  return lines.join('\n');
+}
 
 interface GenerateConfigArgs {
   projectPath?: string;
@@ -217,8 +286,16 @@ export async function handleGenerateConfig(
     result.warnings.unshift(projectKeyWarning);
   }
 
-  // Format output with auto-detection info
-  const text = formatGenerateConfigResult(result, projectPath, existingProjectKey, autoDetectionInfo);
+  // Generate directory tree for context
+  let directoryTree: string | undefined;
+  try {
+    directoryTree = await generateAbbreviatedTree(projectPath);
+  } catch {
+    // Ignore errors - tree is optional
+  }
+
+  // Format output with auto-detection info and directory tree
+  const text = formatGenerateConfigResult(result, projectPath, existingProjectKey, autoDetectionInfo, directoryTree);
 
   return {
     content: [{ type: 'text', text }]
@@ -238,7 +315,8 @@ function formatGenerateConfigResult(
   },
   projectPath: string,
   existingProjectKey?: string,
-  autoDetectionInfo?: AutoDetectionInfo
+  autoDetectionInfo?: AutoDetectionInfo,
+  directoryTree?: string
 ): string {
   const lines: string[] = [];
 
@@ -296,6 +374,15 @@ function formatGenerateConfigResult(
       }
     }
 
+    // Project Structure Tree
+    if (directoryTree) {
+      lines.push('');
+      lines.push('## Project Structure');
+      lines.push('```');
+      lines.push(directoryTree);
+      lines.push('```');
+    }
+
     lines.push('');
     lines.push('## Generated Configuration');
     lines.push('```properties');
@@ -312,6 +399,12 @@ function formatGenerateConfigResult(
 
     lines.push('');
     lines.push('## Next Steps');
+    lines.push('');
+    lines.push('**Tip**: For a more detailed project structure, run:');
+    lines.push('```bash');
+    lines.push('tree -I "node_modules|target|build|dist|.git" --dirsfirst -L 3');
+    lines.push('```');
+    lines.push('');
     lines.push('Run `sonar_scan_project` with:');
     lines.push('```json');
     lines.push(JSON.stringify({

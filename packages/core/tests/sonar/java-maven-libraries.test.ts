@@ -126,7 +126,7 @@ describe('Java Maven Libraries Resolution', () => {
   describe('Maven integration test', () => {
     it('should build full scanner parameters for Maven project', async () => {
       // Arrange
-      const buildScannerParameters = (client as any).buildScannerParameters.bind(client);
+      const buildLanguageSpecificParams = (client as any).buildLanguageSpecificParams.bind(client);
 
       // Mock project context
       (client as any).projectContext = {
@@ -135,7 +135,7 @@ describe('Java Maven Libraries Resolution', () => {
       };
 
       // Act
-      const params = await buildScannerParameters(fixtureDir);
+      const params = await buildLanguageSpecificParams(fixtureDir);
 
       // Assert
       expect(params).toContain('-Dsonar.sources=src/main/java');
