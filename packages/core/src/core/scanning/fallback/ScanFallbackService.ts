@@ -9,8 +9,7 @@ import { ProjectStructureAnalyzer } from './ProjectStructureAnalyzer.js';
 import {
   FallbackAnalysisResult,
   ParsedScanError,
-  ProjectStructure,
-  ScanErrorCategory
+  ProjectStructure
 } from '../../../shared/types/index.js';
 
 export class ScanFallbackService {

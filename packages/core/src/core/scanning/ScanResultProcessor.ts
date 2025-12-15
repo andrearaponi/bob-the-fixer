@@ -96,8 +96,8 @@ export class ScanResultProcessor {
       });
     }
 
-    // Show info about config source
-    if (result.configSource === 'auto-detected' && result.preScanValidation?.detectedProperties?.length) {
+    // Show info about properties file generation - ONLY if actually written to disk
+    if (result.propertiesFileGenerated && result.preScanValidation?.detectedProperties?.length) {
       summary += `\n📝 AUTO-GENERATED: sonar-project.properties was created with ${result.preScanValidation.detectedProperties.length} detected properties\n`;
       summary += `   Future scans will use this file for consistent results and coverage reporting.\n`;
     }

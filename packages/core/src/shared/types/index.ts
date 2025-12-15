@@ -108,6 +108,8 @@ export interface ScanResult {
   scannerType?: 'maven' | 'gradle' | 'cli';
   /** Whether CLI scanner was forced via FORCE_CLI_SCANNER */
   scannerForced?: boolean;
+  /** TRUE only when sonar-project.properties was actually written to disk */
+  propertiesFileGenerated?: boolean;
 }
 
 export interface Issue {

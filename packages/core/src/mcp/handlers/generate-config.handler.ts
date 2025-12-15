@@ -6,7 +6,7 @@
 
 import { PropertiesFileManager } from '../../core/scanning/fallback/index.js';
 import { validateInput, SonarGenerateConfigSchema } from '../../shared/validators/mcp-schemas.js';
-import { MCPResponse, SonarPropertiesConfig, SonarModuleConfig, DetectedProperty } from '../../shared/types/index.js';
+import { MCPResponse, SonarPropertiesConfig, DetectedProperty } from '../../shared/types/index.js';
 import { ProjectManager } from '../../universal/project-manager.js';
 import { sanitizePath } from '../../infrastructure/security/input-sanitization.js';
 import { PreScanValidator } from '../../core/scanning/validation/PreScanValidator.js';

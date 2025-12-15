@@ -144,15 +144,6 @@ export class IssuesSummarySection implements MetricSection {
 export class QualityRatingsSection implements MetricSection {
   name = 'Quality Ratings';
 
-  private formatRating(rating: string): string {
-    const num = parseFloat(rating);
-    if (num === 1) return 'A (Excellent)';
-    if (num === 2) return 'B (Good)';
-    if (num === 3) return 'C (Fair)';
-    if (num === 4) return 'D (Poor)';
-    return 'E (Very Poor)';
-  }
-
   private getRatingEmoji(rating: string): string {
     if (rating === '1.0') return '✅';
     if (rating === '2.0') return '⚠️';

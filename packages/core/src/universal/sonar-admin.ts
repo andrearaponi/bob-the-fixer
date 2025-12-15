@@ -29,12 +29,12 @@ export class SonarAdmin {
   public readonly client: AxiosInstance;  // Make public for advanced operations
 
   constructor(
-    private readonly sonarUrl: string,
-    private readonly adminToken?: string
+    sonarUrl: string,
+    adminToken?: string
   ) {
     // Use admin token from environment if not provided
     const token = adminToken ?? process.env.SONAR_TOKEN ?? process.env.SONAR_ADMIN_TOKEN;
-    
+
     this.client = axios.create({
       baseURL: sonarUrl,
       headers: {

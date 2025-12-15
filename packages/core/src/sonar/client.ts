@@ -17,6 +17,13 @@ export class SonarQubeClient {
   public readonly projectContext?: ProjectContext;
 
   /**
+   * Rule details cache with TTL
+   * Reduces API calls for repeated rule lookups (e.g., during pattern analysis)
+   */
+  private ruleCache: Map<string, { data: SonarRuleDetails; expires: number }> = new Map();
+  private readonly RULE_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+  /**
    * Scanner options (e.g., forceCliScanner)
    */
   private scannerOptions: ScannerOptions = {};
@@ -581,16 +588,20 @@ export class SonarQubeClient {
 
   async getIssues(filter?: IssueFilter): Promise<SonarIssue[]> {
     const PAGE_SIZE = 500; // SonarQube max page size
-    const baseParams = {
+    const baseParams: Record<string, any> = {
       componentKeys: this.projectKey,
       resolved: filter?.resolved ?? false,
       ps: PAGE_SIZE,
-      // Request full issue context including transitions, actions, comments
-      additionalFields: '_all',
       // Force fresh results by adding cache-busting parameter
       _t: Date.now(),
       ...this.buildFilterParams(filter)
     };
+
+    // Only include additionalFields when explicitly requested
+    // This reduces response size and context window usage
+    if (filter?.includeExtendedFields) {
+      baseParams.additionalFields = '_all';
+    }
 
     try {
       console.error('Fetching issues with pagination...');
@@ -678,26 +689,6 @@ export class SonarQubeClient {
 
       throw error;
     }
-  }
-
-  /**
-   * Safely remove HTML tags without using regex (prevents ReDoS)
-   */
-  private stripHtmlTags(html: string): string {
-    let result = '';
-    let inTag = false;
-
-    for (const char of html) {
-      if (char === '<') {
-        inTag = true;
-      } else if (char === '>') {
-        inTag = false;
-      } else if (!inTag) {
-        result += char;
-      }
-    }
-
-    return result;
   }
 
   async getSourceContext(
@@ -953,17 +944,25 @@ export class SonarQubeClient {
 
   /**
    * Get detailed rule information from SonarQube
+   * Uses caching to reduce API calls for repeated lookups
    */
   async getRuleDetails(ruleKey: string): Promise<SonarRuleDetails> {
+    // Check cache first
+    const cached = this.ruleCache.get(ruleKey);
+    if (cached && cached.expires > Date.now()) {
+      console.error(`[Cache HIT] Rule details for: ${ruleKey}`);
+      return cached.data;
+    }
+
     try {
-      console.error(`Fetching rule details for: ${ruleKey}`);
+      console.error(`[Cache MISS] Fetching rule details for: ${ruleKey}`);
       const response = await this.client.get('/api/rules/show', {
-        params: { 
+        params: {
           key: ruleKey,
           actives: true  // Include activation details
         }
       });
-      
+
       const rule = response.data.rule;
       
       // Extract description sections if available (newer SonarQube versions)
@@ -978,7 +977,7 @@ export class SonarQubeClient {
         }];
       }
       
-      return {
+      const ruleDetails: SonarRuleDetails = {
         key: rule.key,
         name: rule.name,
         htmlDesc: rule.htmlDesc,
@@ -999,6 +998,14 @@ export class SonarQubeClient {
         isExternal: rule.isExternal,
         descriptionSections
       };
+
+      // Cache the result with TTL
+      this.ruleCache.set(ruleKey, {
+        data: ruleDetails,
+        expires: Date.now() + this.RULE_CACHE_TTL
+      });
+
+      return ruleDetails;
     } catch (error: any) {
       console.error('Error fetching rule details:', error.response?.status, error.response?.data);
       throw error;
@@ -1128,43 +1135,59 @@ export class SonarQubeClient {
   /**
    * Get rule details for all unique rules in a set of issues
    * Fetches rule info dynamically from SonarQube (no hardcoding!)
+   *
+   * @param issues - Array of issues to extract unique rules from
+   * @param options - Options for lazy loading
+   * @param options.includeDescriptions - Include rule descriptions (heavy ~2.5KB each).
+   *        Default: false (for pattern analysis - saves ~50% tokens)
+   *        Set to true for issue details where descriptions are needed
    */
-  async getUniqueRulesInfo(issues: any[]): Promise<{ [key: string]: any }> {
+  async getUniqueRulesInfo(
+    issues: any[],
+    options: { includeDescriptions?: boolean } = {}
+  ): Promise<{ [key: string]: any }> {
+    const { includeDescriptions = false } = options;
+
     try {
       // Extract unique rule keys
       const uniqueRules = new Set(issues.map(i => i.rule));
-      console.error(`[getUniqueRulesInfo] Fetching details for ${uniqueRules.size} unique rules`);
+      console.error(`[getUniqueRulesInfo] Fetching details for ${uniqueRules.size} unique rules (includeDescriptions: ${includeDescriptions})`);
 
-      const ruleCache: { [key: string]: any } = {};
+      const resultCache: { [key: string]: any } = {};
 
-      // Fetch details for each unique rule
+      // Fetch details for each unique rule (uses internal cache via getRuleDetails)
       for (const ruleKey of uniqueRules) {
         try {
-          const response = await this.client.get('/api/rules/show', {
-            params: {
-              key: ruleKey
-            }
-          });
+          // Use getRuleDetails which has caching built-in
+          const ruleDetails = await this.getRuleDetails(ruleKey);
 
-          const rule = response.data.rule;
-          ruleCache[ruleKey] = {
-            key: rule.key,
-            name: rule.name,
-            type: rule.type,
-            severity: rule.severity,
-            status: rule.status,
-            language: rule.langName || rule.lang,
-            scope: rule.scope,
-            isExternal: rule.isExternal || false,
-            description: rule.descriptionSections?.[0]?.content || rule.mdDesc || '',
-            cleanCodeAttribute: rule.cleanCodeAttribute,
-            cleanCodeAttributeCategory: rule.cleanCodeAttributeCategory,
-            impacts: rule.impacts || []
+          // Build compact rule info (without description by default)
+          const ruleInfo: any = {
+            key: ruleDetails.key,
+            name: ruleDetails.name,
+            type: ruleDetails.type,
+            severity: ruleDetails.severity,
+            status: ruleDetails.status,
+            language: ruleDetails.langName || ruleDetails.lang,
+            scope: ruleDetails.scope,
+            isExternal: ruleDetails.isExternal || false,
+            cleanCodeAttribute: (ruleDetails as any).cleanCodeAttribute,
+            cleanCodeAttributeCategory: (ruleDetails as any).cleanCodeAttributeCategory,
+            impacts: (ruleDetails as any).impacts || []
           };
+
+          // Only include description if explicitly requested (lazy loading)
+          if (includeDescriptions) {
+            ruleInfo.description = ruleDetails.descriptionSections?.[0]?.content
+              || ruleDetails.mdDesc
+              || '';
+          }
+
+          resultCache[ruleKey] = ruleInfo;
         } catch (error: any) {
           console.error(`[getUniqueRulesInfo] Error fetching rule ${ruleKey}:`, error.response?.status);
           // Fallback: use minimal info from rule key
-          ruleCache[ruleKey] = {
+          resultCache[ruleKey] = {
             key: ruleKey,
             name: ruleKey,
             type: 'UNKNOWN',
@@ -1173,7 +1196,7 @@ export class SonarQubeClient {
         }
       }
 
-      return ruleCache;
+      return resultCache;
     } catch (error: any) {
       console.error('[getUniqueRulesInfo] Error:', error.message);
       throw error;
@@ -1988,11 +2011,9 @@ export class SonarQubeClient {
   private async addGoParameters(params: string[], projectPath: string): Promise<void> {
     // Check for go.mod (important for accurate analysis)
     const goModPath = path.join(projectPath, 'go.mod');
-    let hasGoMod = false;
 
     try {
       await fs.access(goModPath);
-      hasGoMod = true;
       console.error('✅ Found go.mod - Go module detected');
     } catch {
       console.warn('⚠️  go.mod not found - analysis may be less accurate');
@@ -2141,7 +2162,7 @@ export class SonarQubeClient {
 
       // Use Maven to get the full classpath with all dependencies
       // Note: Do NOT use -q flag as it suppresses classpath output
-      const { stdout, stderr } = await execAsync(
+      const { stdout } = await execAsync(
         'mvn dependency:build-classpath -DincludeScope=compile',
         {
           cwd: projectPath,
@@ -2255,7 +2276,7 @@ export class SonarQubeClient {
 
       // Use a custom Gradle task to print classpath
       // We'll create a temporary task that prints the runtime classpath
-      const { stdout, stderr } = await execAsync(
+      const { stderr } = await execAsync(
         `${gradleCmd} dependencies --configuration compileClasspath -q`,
         {
           cwd: projectPath,
@@ -2332,9 +2353,6 @@ export class SonarQubeClient {
       // Common Gradle cache locations
       const userHome = process.env.HOME || process.env.USERPROFILE || '';
       const gradleCachePath = path.join(userHome, '.gradle', 'caches', 'modules-2', 'files-2.1');
-
-      // Also check for local build directory
-      const buildLibsPath = path.join(projectPath, 'build', 'libs');
 
       // Try to read build.gradle or build.gradle.kts to understand dependencies
       // For now, we'll scan the cache directory for recent JARs
@@ -2429,55 +2447,9 @@ export class SonarQubeClient {
     const uniqueHotspots = allHotspots.filter((hotspot, index, array) => 
       array.findIndex(h => h.key === hotspot.key) === index
     );
-    
+
     console.error(`Total unique security hotspots found: ${uniqueHotspots.length}`);
     return uniqueHotspots;
-  }
-
-  private async getSecurityHotspotsSingle(status: HotspotStatus, filter?: {
-    resolutions?: Array<HotspotResolution>;
-    severities?: Array<HotspotSeverity>;
-  }): Promise<SonarSecurityHotspot[]> {
-    const params = {
-      projectKey: this.projectKey,
-      ps: 500,
-      status: status,
-      // Force fresh results by adding cache-busting parameter
-      _t: Date.now(),
-      ...this.buildHotspotFilterParams({ ...filter, statuses: [status] })
-    };
-
-    try {
-      console.error('Fetching security hotspots with params:', params);
-      const response = await this.client.get('/api/hotspots/search', { params });
-      console.error(`Found ${response.data.hotspots?.length ?? 0} security hotspots`);
-
-      return response.data.hotspots ?? [];
-    } catch (error: any) {
-      console.error('Error fetching security hotspots:', error.response?.status, error.response?.data);
-      
-      // Enhanced error handling for common permission issues
-      if (error.response?.status === 403) {
-        let errorMessage = 'Permission denied when fetching security hotspots.';
-        
-        if (error.response?.data?.errors) {
-          const errors = error.response.data.errors;
-          errorMessage += ` SonarQube errors: ${errors.map((e: any) => e.msg).join(', ')}`;
-        }
-        
-        errorMessage += '\n\n🔧 Possible solutions:\n' +
-          '  1. Verify the token has "Browse" permission on the project\n' +
-          '  2. Check if the project exists and key is correct\n' +
-          '  3. Ensure the token hasn\'t expired\n' +
-          '  4. Security hotspots may require additional permissions';
-        
-        throw new Error(errorMessage);
-      } else if (error.response?.status === 404) {
-        throw new Error(`Project '${this.projectKey}' not found when fetching security hotspots.`);
-      }
-      
-      throw error;
-    }
   }
 
   /**
