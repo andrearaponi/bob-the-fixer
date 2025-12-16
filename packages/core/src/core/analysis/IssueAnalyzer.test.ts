@@ -2,6 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { IssueAnalyzer } from './IssueAnalyzer';
 import { mockIssue, mockSourceCode, mockComponentDetails } from '../../../tests/fixtures/mock-sonar-responses';
 
+// Mock fs/promises for related tests discovery
+vi.mock('fs/promises', () => ({
+  readdir: vi.fn(async () => []),
+}));
+
 // Create mock instances at module level
 const mockProjectManager = {
   getOrCreateConfig: vi.fn(() => Promise.resolve()),
@@ -10,9 +15,13 @@ const mockProjectManager = {
 };
 
 const mockSonarClient = {
-  getIssues: vi.fn(() => Promise.resolve([])),
+  getIssueByKey: vi.fn(() => Promise.resolve(null)),
   getSourceContext: vi.fn(() => Promise.resolve('')),
+  getSourceLines: vi.fn(() => Promise.resolve([])),
+  getLineCoverage: vi.fn(() => Promise.resolve([])),
   getComponentDetails: vi.fn(() => Promise.resolve({})),
+  getSimilarFixedIssues: vi.fn(() => Promise.resolve([])),
+  getProjectTestFiles: vi.fn(() => Promise.resolve([])),
 };
 
 const mockConfig = {
@@ -61,6 +70,7 @@ vi.mock('../../shared/utils/issue-details-utils', () => ({
   buildFileMetrics: vi.fn(() => ''),
   buildAdditionalFields: vi.fn(() => ''),
   buildNextSteps: vi.fn(() => ''),
+  detectLanguageFromFile: vi.fn(() => 'typescript'),
 }));
 
 describe('IssueAnalyzer', () => {
@@ -71,16 +81,24 @@ describe('IssueAnalyzer', () => {
     vi.mocked(mockProjectManager.getOrCreateConfig).mockClear();
     vi.mocked(mockProjectManager.analyzeProject).mockClear();
     vi.mocked(mockProjectManager.getWorkingDirectory).mockClear();
-    vi.mocked(mockSonarClient.getIssues).mockClear();
+    vi.mocked(mockSonarClient.getIssueByKey).mockClear();
     vi.mocked(mockSonarClient.getSourceContext).mockClear();
+    vi.mocked(mockSonarClient.getSourceLines).mockClear();
+    vi.mocked(mockSonarClient.getLineCoverage).mockClear();
     vi.mocked(mockSonarClient.getComponentDetails).mockClear();
+    vi.mocked(mockSonarClient.getSimilarFixedIssues).mockClear();
+    vi.mocked(mockSonarClient.getProjectTestFiles).mockClear();
 
     // Set default return values
     mockProjectManager.getOrCreateConfig = vi.fn(async () => mockConfig);
     mockProjectManager.analyzeProject = vi.fn(async () => mockProjectContext);
-    mockSonarClient.getIssues = vi.fn(async () => [mockIssue]);
+    mockSonarClient.getIssueByKey = vi.fn(async () => mockIssue);
     mockSonarClient.getSourceContext = vi.fn(async () => mockSourceCode.sources);
+    mockSonarClient.getSourceLines = vi.fn(async () => mockSourceCode.sources);
+    mockSonarClient.getLineCoverage = vi.fn(async () => []);
     mockSonarClient.getComponentDetails = vi.fn(async () => mockComponentDetails);
+    mockSonarClient.getSimilarFixedIssues = vi.fn(async () => []);
+    mockSonarClient.getProjectTestFiles = vi.fn(async () => []);
 
     analyzer = new IssueAnalyzer(mockProjectManager as any);
   });
@@ -100,7 +118,7 @@ describe('IssueAnalyzer', () => {
       expect(result).toBe('Detailed issue report');
       expect(mockProjectManager.getOrCreateConfig).toHaveBeenCalled();
       expect(mockProjectManager.analyzeProject).toHaveBeenCalled();
-      expect(mockSonarClient.getIssues).toHaveBeenCalled();
+      expect(mockSonarClient.getIssueByKey).toHaveBeenCalled();
     });
 
     it('should fetch source context with default contextLines of 10', async () => {
@@ -109,9 +127,185 @@ describe('IssueAnalyzer', () => {
 
       expect(mockSonarClient.getSourceContext).toHaveBeenCalledWith(
         'test-project:src/main.ts',
-        32, // line 42 - 10
-        52  // line 42 + 10
+        42,
+        10
       );
+    });
+
+    it('should fetch file header by default (first 60 lines)', async () => {
+      const options = { issueKey: 'AX123-issue-key' };
+      await analyzer.getIssueDetails(options);
+
+      expect(mockSonarClient.getSourceLines).toHaveBeenCalledWith(
+        'test-project:src/main.ts',
+        1,
+        60,
+        expect.objectContaining({ bestEffort: true })
+      );
+    });
+
+    it('should skip file header when includeFileHeader is false', async () => {
+      const options = { issueKey: 'AX123-issue-key', includeFileHeader: false };
+      await analyzer.getIssueDetails(options);
+
+      expect(mockSonarClient.getSourceLines).not.toHaveBeenCalled();
+    });
+
+    it('should include data flow when flows are present and includeDataFlow is auto', async () => {
+      const issueWithFlow = {
+        ...mockIssue,
+        flows: [
+          {
+            locations: [
+              {
+                component: 'test-project:src/request.ts',
+                textRange: { startLine: 10, endLine: 10, startOffset: 0, endOffset: 0 },
+                msg: 'SOURCE'
+              },
+              {
+                component: 'test-project:src/db.ts',
+                textRange: { startLine: 42, endLine: 42, startOffset: 0, endOffset: 0 },
+                msg: 'SINK'
+              }
+            ]
+          }
+        ]
+      };
+
+      mockSonarClient.getIssueByKey = vi.fn(async () => issueWithFlow as any);
+      mockSonarClient.getSourceLines = vi.fn(async () => mockSourceCode.sources as any);
+
+      await analyzer.getIssueDetails({
+        issueKey: 'AX123-issue-key',
+        includeFileHeader: false,
+        includeDataFlow: 'auto',
+        flowContextLines: 3
+      });
+
+      expect(mockSonarClient.getSourceLines).toHaveBeenCalledWith(
+        'test-project:src/request.ts',
+        7,
+        13,
+        expect.objectContaining({ bestEffort: true })
+      );
+      expect(mockSonarClient.getSourceLines).toHaveBeenCalledWith(
+        'test-project:src/db.ts',
+        39,
+        45,
+        expect.objectContaining({ bestEffort: true })
+      );
+
+      const { buildIssueDetailsReport } = await import('../../shared/utils/issue-details-utils');
+      const calls = vi.mocked(buildIssueDetailsReport).mock.calls;
+      const optionsArg = calls[calls.length - 1][4] as any;
+      expect(optionsArg.dataFlowSection).toContain('DATA FLOW');
+    });
+
+    it('should not include data flow when includeDataFlow is false', async () => {
+      const issueWithFlow = {
+        ...mockIssue,
+        flows: [
+          {
+            locations: [
+              {
+                component: 'test-project:src/request.ts',
+                textRange: { startLine: 10, endLine: 10, startOffset: 0, endOffset: 0 },
+                msg: 'SOURCE'
+              }
+            ]
+          }
+        ]
+      };
+
+      mockSonarClient.getIssueByKey = vi.fn(async () => issueWithFlow as any);
+      mockSonarClient.getSourceLines = vi.fn(async () => mockSourceCode.sources as any);
+
+      await analyzer.getIssueDetails({
+        issueKey: 'AX123-issue-key',
+        includeFileHeader: false,
+        includeDataFlow: false
+      });
+
+      expect(mockSonarClient.getSourceLines).not.toHaveBeenCalled();
+    });
+
+    it('should include similar FIXED issues when includeSimilarFixed is true', async () => {
+      mockSonarClient.getSimilarFixedIssues = vi.fn(async () => ([
+        {
+          key: 'fixed-1',
+          component: 'test-project:src/a.ts',
+          line: 10,
+          message: 'Fixed issue example',
+          closeDate: '2024-01-01T00:00:00+0000'
+        }
+      ] as any));
+
+      await analyzer.getIssueDetails({
+        issueKey: 'AX123-issue-key',
+        includeFileHeader: false,
+        includeDataFlow: false,
+        includeSimilarFixed: true,
+        maxSimilarIssues: 1
+      });
+
+      expect(mockSonarClient.getSimilarFixedIssues).toHaveBeenCalledWith(
+        'typescript:S1234',
+        2
+      );
+
+      const { buildIssueDetailsReport } = await import('../../shared/utils/issue-details-utils');
+      const calls = vi.mocked(buildIssueDetailsReport).mock.calls;
+      const optionsArg = calls[calls.length - 1][4] as any;
+      expect(optionsArg.similarFixedSection).toContain('SIMILAR FIXED ISSUES');
+      expect(optionsArg.similarFixedSection).toContain('fixed-1');
+    });
+
+    it('should include related tests and coverage hints when includeRelatedTests is true', async () => {
+      const fs = await import('fs/promises');
+      vi.mocked(fs.readdir).mockImplementation(async (dirPath: any) => {
+        if (String(dirPath) === '/test/project/src') return ['main.test.ts', 'other.ts'] as any;
+        return [] as any;
+      });
+
+      mockSonarClient.getLineCoverage = vi.fn(async () => ([
+        { line: 42, code: '<span>ignored</span>', lineHits: 0, conditions: 2, coveredConditions: 1 }
+      ] as any));
+
+      await analyzer.getIssueDetails({
+        issueKey: 'AX123-issue-key',
+        includeFileHeader: false,
+        includeDataFlow: false,
+        includeRelatedTests: true
+      });
+
+      const { buildIssueDetailsReport } = await import('../../shared/utils/issue-details-utils');
+      const calls = vi.mocked(buildIssueDetailsReport).mock.calls;
+      const optionsArg = calls[calls.length - 1][4] as any;
+      expect(optionsArg.relatedTestsSection).toContain('RELATED TESTS');
+      expect(optionsArg.relatedTestsSection).toContain('src/main.test.ts');
+      expect(optionsArg.relatedTestsSection).toContain('COVERAGE HINTS');
+      expect(optionsArg.relatedTestsSection).toContain('NOT COVERED');
+      expect(optionsArg.relatedTestsSection).toContain('Branch coverage: 1/2');
+    });
+
+    it('should include SCM hints when includeScmHints is true', async () => {
+      mockSonarClient.getLineCoverage = vi.fn(async () => ([
+        { line: 42, code: '<span>ignored</span>', scmAuthor: 'dev1', scmDate: '2024-01-01', scmRevision: 'abc123' }
+      ] as any));
+
+      await analyzer.getIssueDetails({
+        issueKey: 'AX123-issue-key',
+        includeFileHeader: false,
+        includeDataFlow: false,
+        includeScmHints: true
+      });
+
+      const { buildIssueDetailsReport } = await import('../../shared/utils/issue-details-utils');
+      const calls = vi.mocked(buildIssueDetailsReport).mock.calls;
+      const optionsArg = calls[calls.length - 1][4] as any;
+      expect(optionsArg.scmHintsSection).toContain('SCM HINTS');
+      expect(optionsArg.scmHintsSection).toContain('dev1');
+      expect(optionsArg.scmHintsSection).toContain('abc123');
     });
 
     it('should fetch source context with custom contextLines', async () => {
@@ -123,14 +317,14 @@ describe('IssueAnalyzer', () => {
 
       expect(mockSonarClient.getSourceContext).toHaveBeenCalledWith(
         'test-project:src/main.ts',
-        37, // line 42 - 5
-        47  // line 42 + 5
+        42,
+        5
       );
     });
 
     it('should handle contextLines larger than line number (minimum line 1)', async () => {
       const issueAtLine5 = { ...mockIssue, line: 5 };
-      mockSonarClient.getIssues = vi.fn(async () => [issueAtLine5]);
+      mockSonarClient.getIssueByKey = vi.fn(async () => issueAtLine5);
 
       const options = {
         issueKey: 'AX123-issue-key',
@@ -140,22 +334,22 @@ describe('IssueAnalyzer', () => {
 
       expect(mockSonarClient.getSourceContext).toHaveBeenCalledWith(
         'test-project:src/main.ts',
-        1,  // Math.max(1, 5-10) = 1
-        15  // 5 + 10
+        5,
+        10
       );
     });
 
     it('should handle issue without line number (defaults to line 1)', async () => {
       const issueWithoutLine = { ...mockIssue, line: undefined };
-      mockSonarClient.getIssues = vi.fn(async () => [issueWithoutLine]);
+      mockSonarClient.getIssueByKey = vi.fn(async () => issueWithoutLine);
 
       const options = { issueKey: 'AX123-issue-key' };
       await analyzer.getIssueDetails(options);
 
       expect(mockSonarClient.getSourceContext).toHaveBeenCalledWith(
         'test-project:src/main.ts',
-        1,  // Math.max(1, 1-10) = 1
-        11  // 1 + 10
+        1,
+        10
       );
     });
 
@@ -262,15 +456,13 @@ describe('IssueAnalyzer', () => {
       await analyzer.getIssueDetails(options, correlationId);
 
       // Just verify it doesn't throw
-      expect(mockSonarClient.getIssues).toHaveBeenCalled();
+      expect(mockSonarClient.getIssueByKey).toHaveBeenCalled();
     });
   });
 
   describe('getIssueDetails - error cases', () => {
     it('should throw error when issue not found', async () => {
-      mockSonarClient.getIssues = vi.fn(async () => [
-        { ...mockIssue, key: 'different-key' },
-      ]);
+      mockSonarClient.getIssueByKey = vi.fn(async () => null);
 
       const options = { issueKey: 'AX123-issue-key' };
 
@@ -280,7 +472,7 @@ describe('IssueAnalyzer', () => {
     });
 
     it('should throw error when no issues exist', async () => {
-      mockSonarClient.getIssues = vi.fn(async () => []);
+      mockSonarClient.getIssueByKey = vi.fn(async () => null);
 
       const options = { issueKey: 'AX123-issue-key' };
 
@@ -313,8 +505,8 @@ describe('IssueAnalyzer', () => {
       );
     });
 
-    it('should handle getIssues API errors', async () => {
-      mockSonarClient.getIssues = vi.fn(async () => {
+    it('should handle getIssueByKey API errors', async () => {
+      mockSonarClient.getIssueByKey = vi.fn(async () => {
         throw new Error('SonarQube API error');
       });
 
@@ -338,26 +530,6 @@ describe('IssueAnalyzer', () => {
     });
   });
 
-  describe('Multiple issues in response', () => {
-    it('should find correct issue from multiple issues', async () => {
-      mockSonarClient.getIssues = vi.fn(async () => [
-        { ...mockIssue, key: 'issue-1' },
-        { ...mockIssue, key: 'AX123-issue-key' }, // Target issue
-        { ...mockIssue, key: 'issue-3' },
-      ]);
-
-      const options = { issueKey: 'AX123-issue-key' };
-      const result = await analyzer.getIssueDetails(options);
-
-      expect(result).toBe('Detailed issue report');
-      expect(mockSonarClient.getSourceContext).toHaveBeenCalledWith(
-        'test-project:src/main.ts',
-        expect.any(Number),
-        expect.any(Number)
-      );
-    });
-  });
-
   describe('Options combinations', () => {
     it('should handle all options together', async () => {
       const options = {
@@ -373,8 +545,8 @@ describe('IssueAnalyzer', () => {
       expect(result).toBe('Detailed issue report');
       expect(mockSonarClient.getSourceContext).toHaveBeenCalledWith(
         'test-project:src/main.ts',
-        27, // 42 - 15
-        57  // 42 + 15
+        42,
+        15
       );
     });
 

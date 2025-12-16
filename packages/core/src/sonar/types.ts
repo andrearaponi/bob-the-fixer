@@ -13,6 +13,8 @@ export interface SonarIssue {
   };
   flows: any[];
   status: string;
+  resolution?: string;
+  closeDate?: string;
   message: string;
   type: 'BUG' | 'VULNERABILITY' | 'CODE_SMELL' | 'SECURITY_HOTSPOT';
   effort?: string;

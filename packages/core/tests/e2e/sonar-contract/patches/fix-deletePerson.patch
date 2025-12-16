@@ -1,0 +1,10 @@
+--- a/src/main/java/com/demo/bob/PersonService.java
++++ b/src/main/java/com/demo/bob/PersonService.java
+@@ -3,7 +3,6 @@
+ public class PersonService {
+
+     public void deletePerson(long id) {
+-        Person person = new Person(id, "demo");
+         doDelete(id);
+     }
+

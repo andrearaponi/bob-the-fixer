@@ -66,10 +66,54 @@ export const SonarGetIssueDetailsSchema = z.object({
     .min(0, 'Context lines cannot be negative')
     .max(100, 'Too many context lines')
     .optional()
-    .default(5),
+    .default(10),
   includeRuleDetails: z.boolean().optional().default(true),
   includeCodeExamples: z.boolean().optional().default(true),
-  includeFilePath: z.boolean().optional().default(true)
+  includeFilePath: z.boolean().optional().default(true),
+
+  // NEW: richer context for fixing
+  includeFileHeader: z.boolean().optional().default(true),
+  headerMaxLines: z.number()
+    .int('Header max lines must be integer')
+    .min(1, 'Header max lines must be at least 1')
+    .max(200, 'Header max lines too large')
+    .optional()
+    .default(60),
+
+  includeDataFlow: z.union([z.boolean(), z.literal('auto')])
+    .optional()
+    .default('auto'),
+  maxFlows: z.number()
+    .int('Max flows must be integer')
+    .min(1, 'Max flows must be at least 1')
+    .max(10, 'Max flows too large')
+    .optional()
+    .default(3),
+  maxFlowSteps: z.number()
+    .int('Max flow steps must be integer')
+    .min(1, 'Max flow steps must be at least 1')
+    .max(50, 'Max flow steps too large')
+    .optional()
+    .default(12),
+  flowContextLines: z.number()
+    .int('Flow context lines must be integer')
+    .min(0, 'Flow context lines cannot be negative')
+    .max(20, 'Flow context lines too large')
+    .optional()
+    .default(3),
+
+  includeSimilarFixed: z.boolean().optional().default(false),
+  maxSimilarIssues: z.number()
+    .int('Max similar issues must be integer')
+    .min(1, 'Max similar issues must be at least 1')
+    .max(10, 'Max similar issues too large')
+    .optional()
+    .default(3),
+
+  includeRelatedTests: z.boolean().optional().default(false),
+  includeCoverageHints: z.boolean().optional(),
+
+  includeScmHints: z.boolean().optional().default(false),
 });
 
 export const SonarGenerateReportSchema = z.object({

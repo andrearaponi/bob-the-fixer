@@ -2,9 +2,9 @@
 
 **Intelligent AI system for code quality & security analysis with SonarQube.** Achieve **ZERO technical debt** through automated analysis, security scanning, and natural language interaction with your AI assistant.
 
-> 🚀 **Release**: 0.4.0 - Context window optimization & bug fixes
+> 🚀 **Release**: 0.5.0 - Smart Issue Context & Token Optimization
 
-![Version](https://img.shields.io/badge/version-0.4.0-blue)
+![Version](https://img.shields.io/badge/version-0.5.0-blue)
 ![License](https://img.shields.io/badge/license-AGPL--3.0-green)
 ![Node](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen)
 ![Container](https://img.shields.io/badge/podman-recommended-blue)
@@ -111,9 +111,9 @@ When an update is available, Bob will show a banner with the update command:
 
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  UPDATE AVAILABLE: Bob the Fixer 0.4.0 (Code update only)
-  Current version: 0.3.9
-  Notes: Context window optimization & bug fixes
+  UPDATE AVAILABLE: Bob the Fixer 0.5.0 (Code update only)
+  Current version: 0.4.x
+  Notes: Smart Issue Context & Token Optimization
   Run: ./update.sh
   https://github.com/andrearaponi/bob-the-fixer/releases
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

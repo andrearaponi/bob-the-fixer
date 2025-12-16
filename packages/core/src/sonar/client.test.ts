@@ -322,28 +322,38 @@ describe('SonarQubeClient', () => {
       );
     });
 
-    it('should fetch source code context successfully from raw endpoint', async () => {
-      const rawCode = `function example() {
-  const used = "value";
-  const unused = "test"; // Issue here
-  return used;
-}`;
-      mockAxiosInstance.get = vi.fn(async () => ({ data: rawCode }));
+    it('should fetch source code context successfully from sources/index endpoint', async () => {
+      const indexResponse = [
+        {
+          '1': 'function example() {',
+          '2': '  const used = "value";',
+          '3': '  const unused = "test"; // Issue here',
+          '4': '  return used;',
+          '5': '}'
+        }
+      ];
+      mockAxiosInstance.get = vi.fn(async () => ({ data: indexResponse }));
 
       const source = await client.getSourceContext('test-file.ts', 2, 2);
 
-      expect(mockAxiosInstance.get).toHaveBeenCalledWith('/api/sources/raw', {
+      expect(mockAxiosInstance.get).toHaveBeenCalledWith('/api/sources/index', {
         params: {
-          key: 'test-file.ts'
-        },
+          resource: 'test-file.ts',
+          from: 1,
+          to: 5,
+        }
       });
-      // Should return a string with context lines around line 2
       expect(typeof source).toBe('string');
-      expect(source.length).toBeGreaterThan(0);
+      expect(source).toContain('function example()');
+      expect(source).toContain('const unused');
     });
 
     it('should handle missing source code gracefully', async () => {
-      mockAxiosInstance.get = vi.fn(async () => ({ data: null }));
+      mockAxiosInstance.get = vi.fn(async (url: string) => {
+        if (url === '/api/sources/index') return { data: [] };
+        if (url === '/api/sources/raw') return { data: null };
+        return { data: null };
+      });
 
       const source = await client.getSourceContext('missing-file.ts', 1, 5);
 
@@ -356,6 +366,121 @@ describe('SonarQubeClient', () => {
       const source = await client.getSourceContext('error-file.ts', 1, 5);
 
       expect(source).toEqual('');
+    });
+  });
+
+  describe('getSourceLines', () => {
+    beforeEach(() => {
+      client = new SonarQubeClient(
+        'http://localhost:9000',
+        'test-token',
+        'test-project'
+      );
+    });
+
+    it('should fetch source lines from sources/index endpoint and return numbered lines', async () => {
+      const indexResponse = [
+        {
+          '2': 'line2',
+          '3': 'line3',
+          '4': 'line4',
+        }
+      ];
+      mockAxiosInstance.get = vi.fn(async () => ({ data: indexResponse }));
+
+      const lines = await client.getSourceLines('test-file.ts', 2, 4);
+
+      expect(mockAxiosInstance.get).toHaveBeenCalledWith('/api/sources/index', {
+        params: { resource: 'test-file.ts', from: 2, to: 5 },
+      });
+      expect(lines).toEqual([
+        { line: 2, code: 'line2' },
+        { line: 3, code: 'line3' },
+        { line: 4, code: 'line4' },
+      ]);
+    });
+
+    it('should fall back to raw endpoint when sources/index fails', async () => {
+      const rawCode = `line1
+line2
+line3
+line4
+line5`;
+
+      mockAxiosInstance.get = vi.fn(async (url: string) => {
+        if (url === '/api/sources/index') throw new Error('index not available');
+        if (url === '/api/sources/raw') return { data: rawCode };
+        return { data: null };
+      });
+
+      const lines = await client.getSourceLines('test-file.ts', 2, 4);
+
+      expect(mockAxiosInstance.get).toHaveBeenCalledWith('/api/sources/index', {
+        params: { resource: 'test-file.ts', from: 2, to: 5 },
+      });
+      expect(mockAxiosInstance.get).toHaveBeenCalledWith('/api/sources/raw', {
+        params: { key: 'test-file.ts' },
+        responseType: 'text',
+      });
+      expect(lines).toEqual([
+        { line: 2, code: 'line2' },
+        { line: 3, code: 'line3' },
+        { line: 4, code: 'line4' },
+      ]);
+    });
+
+    it('should return empty array on errors when bestEffort=true', async () => {
+      mockAxiosInstance.get = vi.fn(async () => { throw new Error('API error'); });
+
+      const lines = await client.getSourceLines('test-file.ts', 1, 5, { bestEffort: true });
+
+      expect(lines).toEqual([]);
+    });
+  });
+
+  describe('getIssueByKey', () => {
+    beforeEach(() => {
+      client = new SonarQubeClient(
+        'http://localhost:9000',
+        'test-token',
+        'test-project'
+      );
+    });
+
+    it('should fetch a single issue by key', async () => {
+      mockAxiosInstance.get = vi.fn(async () => ({ data: { issues: [mockIssuesResponse.issues[0]] } }));
+
+      const issue = await client.getIssueByKey('AX123');
+
+      expect(mockAxiosInstance.get).toHaveBeenCalledWith('/api/issues/search', {
+        params: expect.objectContaining({
+          componentKeys: 'test-project',
+          issues: 'AX123',
+          p: 1,
+          ps: 1,
+        }),
+      });
+      expect(issue).toEqual(mockIssuesResponse.issues[0]);
+    });
+
+    it('should include additionalFields when requested', async () => {
+      mockAxiosInstance.get = vi.fn(async () => ({ data: { issues: [mockIssuesResponse.issues[0]] } }));
+
+      await client.getIssueByKey('AX123', { includeExtendedFields: true });
+
+      expect(mockAxiosInstance.get).toHaveBeenCalledWith('/api/issues/search', {
+        params: expect.objectContaining({
+          additionalFields: '_all',
+        }),
+      });
+    });
+
+    it('should return null when issue not found', async () => {
+      mockAxiosInstance.get = vi.fn(async () => ({ data: { issues: [] } }));
+
+      const issue = await client.getIssueByKey('AX123');
+
+      expect(issue).toBeNull();
     });
   });
 

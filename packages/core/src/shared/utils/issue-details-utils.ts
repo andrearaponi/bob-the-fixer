@@ -8,11 +8,23 @@ export async function buildIssueDetailsReport(
   context: string,
   config: any,
   sonarClient: any,
-  options: { includeRuleDetails?: boolean; includeFilePath?: boolean; contextLines?: number; componentDetails?: any },
+  options: {
+    includeRuleDetails?: boolean;
+    includeCodeExamples?: boolean;
+    includeFilePath?: boolean;
+    contextLines?: number;
+    componentDetails?: any;
+    fileHeader?: string;
+    headerMaxLines?: number;
+    dataFlowSection?: string;
+    similarFixedSection?: string;
+    relatedTestsSection?: string;
+    scmHintsSection?: string;
+  },
   buildIssueBasicInfoFn: (issue: any) => string,
   buildIssueLocationFn: (issue: any, config: any, includeFilePath?: boolean) => string,
   buildFileMetricsFn: (component: any) => string,
-  buildRuleInformationFn: (issue: any, sonarClient: any) => Promise<string>,
+  buildRuleInformationFn: (issue: any, sonarClient: any, includeCodeExamples?: boolean) => Promise<string>,
   buildSourceContextFn: (issue: any, context: string, contextLines?: number) => string,
   buildAdditionalFieldsFn: (issue: any) => string,
   buildNextStepsFn: (issue: any, config: any, includeFilePath?: boolean) => string
@@ -27,10 +39,34 @@ export async function buildIssueDetailsReport(
   }
 
   if (options.includeRuleDetails) {
-    details += await buildRuleInformationFn(issue, sonarClient);
+    details += await buildRuleInformationFn(issue, sonarClient, options.includeCodeExamples);
+  }
+
+  if (options.fileHeader && options.fileHeader.trim()) {
+    const language = detectLanguageFromFile(issue.component);
+    const maxLinesInfo = options.headerMaxLines ? ` (first ${options.headerMaxLines} lines)` : '';
+    details += `FILE HEADER${maxLinesInfo}\n\n`;
+    details += `\`\`\`${language}\n${options.fileHeader}\n\`\`\`\n\n`;
   }
 
   details += buildSourceContextFn(issue, context, options.contextLines);
+
+  if (options.dataFlowSection && options.dataFlowSection.trim()) {
+    details += options.dataFlowSection;
+  }
+
+  if (options.similarFixedSection && options.similarFixedSection.trim()) {
+    details += options.similarFixedSection;
+  }
+
+  if (options.relatedTestsSection && options.relatedTestsSection.trim()) {
+    details += options.relatedTestsSection;
+  }
+
+  if (options.scmHintsSection && options.scmHintsSection.trim()) {
+    details += options.scmHintsSection;
+  }
+
   details += buildAdditionalFieldsFn(issue);
   details += buildNextStepsFn(issue, config, options.includeFilePath);
 
@@ -77,7 +113,11 @@ export function buildIssueLocation(issue: any, config: any, includeFilePath?: bo
 /**
  * Build rule information section with descriptions
  */
-export async function buildRuleInformation(issue: any, sonarClient: any): Promise<string> {
+export async function buildRuleInformation(
+  issue: any,
+  sonarClient: any,
+  includeCodeExamples: boolean = true
+): Promise<string> {
   const ruleDetails = await sonarClient.getRuleDetails(issue.rule);
 
   let ruleInfo = `RULE INFORMATION\n\n`;
@@ -92,7 +132,7 @@ export async function buildRuleInformation(issue: any, sonarClient: any): Promis
   }
 
   ruleInfo += `\n`;
-  ruleInfo += buildRuleDescriptions(ruleDetails, issue);
+  ruleInfo += buildRuleDescriptions(ruleDetails, issue, includeCodeExamples);
 
   if (ruleDetails.effortToFixDescription) {
     ruleInfo += `EFFORT TO FIX: ${ruleDetails.effortToFixDescription}\n\n`;
@@ -104,11 +144,20 @@ export async function buildRuleInformation(issue: any, sonarClient: any): Promis
 /**
  * Build rule description sections
  */
-export function buildRuleDescriptions(ruleDetails: any, issue: any): string {
+export function buildRuleDescriptions(ruleDetails: any, issue: any, includeCodeExamples: boolean = true): string {
   if (ruleDetails.descriptionSections && ruleDetails.descriptionSections.length > 0) {
     let descriptions = `DETAILED EXPLANATION:\n\n`;
 
     for (const section of ruleDetails.descriptionSections) {
+      if (!includeCodeExamples) {
+        const sectionKey = String(section.key ?? '').toLowerCase();
+        if (sectionKey === 'noncompliant' || sectionKey === 'non_compliant_code' || sectionKey === 'non_compliant_code_example') {
+          continue;
+        }
+        if (sectionKey === 'compliant' || sectionKey === 'compliant_solution' || sectionKey === 'compliant_code_example') {
+          continue;
+        }
+      }
       descriptions += formatRuleSection(section);
     }
 

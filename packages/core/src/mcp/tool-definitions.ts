@@ -76,7 +76,26 @@ export const toolDefinitions = [
         contextLines: { type: 'number' as const, description: 'Number of context lines around the issue (default: 10)' },
         includeRuleDetails: { type: 'boolean' as const, description: 'Include detailed rule information from SonarQube (default: true)' },
         includeCodeExamples: { type: 'boolean' as const, description: 'Include compliant/non-compliant code examples (default: true)' },
-        includeFilePath: { type: 'boolean' as const, description: 'Include absolute file path for direct editing (default: true)' }
+        includeFilePath: { type: 'boolean' as const, description: 'Include absolute file path for direct editing (default: true)' },
+
+        // New context options
+        includeFileHeader: { type: 'boolean' as const, description: 'Include file header (imports/signature) before the issue context (default: true)' },
+        headerMaxLines: { type: 'number' as const, description: 'Max lines to include in file header (default: 60, max: 200)' },
+        includeDataFlow: {
+          anyOf: [
+            { type: 'boolean' as const },
+            { type: 'string' as const, enum: ['auto'] }
+          ],
+          description: 'Include security data flow when available: "auto" | true | false (default: auto)'
+        },
+        maxFlows: { type: 'number' as const, description: 'Max flows to include when data flow is present (default: 3)' },
+        maxFlowSteps: { type: 'number' as const, description: 'Max steps per flow to include (default: 12)' },
+        flowContextLines: { type: 'number' as const, description: 'Context lines per dataflow step (default: 3)' },
+        includeSimilarFixed: { type: 'boolean' as const, description: 'Include similar issues already FIXED in this project (default: false)' },
+        maxSimilarIssues: { type: 'number' as const, description: 'Max similar fixed issues to include (default: 3)' },
+        includeRelatedTests: { type: 'boolean' as const, description: 'Include related tests (best-effort) and coverage hints (default: false)' },
+        includeCoverageHints: { type: 'boolean' as const, description: 'Include coverage hints for the issue line (default: true when includeRelatedTests is true)' },
+        includeScmHints: { type: 'boolean' as const, description: 'Include SCM hints (author/date/revision) when available (default: false)' }
       },
       required: ['issueKey']
     }

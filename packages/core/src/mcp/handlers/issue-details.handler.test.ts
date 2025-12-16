@@ -20,7 +20,23 @@ describe('handleGetIssueDetails', () => {
       contextLines: 5,
       includeRuleDetails: true,
       includeCodeExamples: true,
-      includeFilePath: true
+      includeFilePath: true,
+
+      includeFileHeader: true,
+      headerMaxLines: 60,
+
+      includeDataFlow: 'auto',
+      maxFlows: 3,
+      maxFlowSteps: 12,
+      flowContextLines: 3,
+
+      includeSimilarFixed: false,
+      maxSimilarIssues: 3,
+
+      includeRelatedTests: false,
+      includeCoverageHints: undefined,
+
+      includeScmHints: false,
     }));
 
     // Mock ProjectManager
@@ -45,7 +61,18 @@ describe('handleGetIssueDetails', () => {
         contextLines: 5,
         includeRuleDetails: true,
         includeCodeExamples: true,
-        includeFilePath: true
+        includeFilePath: true,
+        includeFileHeader: true,
+        headerMaxLines: 60,
+        includeDataFlow: 'auto',
+        maxFlows: 3,
+        maxFlowSteps: 12,
+        flowContextLines: 3,
+        includeSimilarFixed: false,
+        maxSimilarIssues: 3,
+        includeRelatedTests: false,
+        includeCoverageHints: undefined,
+        includeScmHints: false,
       };
 
       const result = await handleGetIssueDetails(args);
@@ -61,7 +88,23 @@ describe('handleGetIssueDetails', () => {
           contextLines: 5,
           includeRuleDetails: true,
           includeCodeExamples: true,
-          includeFilePath: true
+          includeFilePath: true,
+
+          includeFileHeader: true,
+          headerMaxLines: 60,
+
+          includeDataFlow: 'auto',
+          maxFlows: 3,
+          maxFlowSteps: 12,
+          flowContextLines: 3,
+
+          includeSimilarFixed: false,
+          maxSimilarIssues: 3,
+
+          includeRelatedTests: false,
+          includeCoverageHints: undefined,
+
+          includeScmHints: false,
         },
         undefined
       );

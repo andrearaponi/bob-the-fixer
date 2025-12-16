@@ -24,6 +24,16 @@ export class SonarQubeClient {
   private readonly RULE_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
   /**
+   * Raw source cache (per client instance).
+   * `/api/sources/raw` returns plain text (no syntax-highlighting HTML).
+   * We cache the split lines to avoid re-downloading the same file for:
+   * - file header
+   * - issue context
+   * - dataflow snippets
+   */
+  private rawSourceLinesCache: Map<string, string[]> = new Map();
+
+  /**
    * Scanner options (e.g., forceCliScanner)
    */
   private scannerOptions: ScannerOptions = {};
@@ -586,6 +596,91 @@ export class SonarQubeClient {
     }
   }
 
+  /**
+   * Fetch a single issue by key (efficient alternative to getIssues()+find).
+   * Uses /api/issues/search with the `issues` parameter.
+   */
+  async getIssueByKey(issueKey: string, options?: { includeExtendedFields?: boolean }): Promise<SonarIssue | null> {
+    const params: Record<string, any> = {
+      componentKeys: this.projectKey,
+      issues: issueKey,
+      p: 1,
+      ps: 1,
+      // Cache-busting parameter to avoid stale results
+      _t: Date.now(),
+    };
+
+    if (options?.includeExtendedFields) {
+      params.additionalFields = '_all';
+    }
+
+    try {
+      const response = await this.client.get('/api/issues/search', { params });
+      const issue = response.data.issues?.[0];
+      return issue ?? null;
+    } catch (error: any) {
+      console.error('Error fetching issue by key:', error.response?.status, error.response?.data);
+
+      if (error.response?.status === 403) {
+        let errorMessage = 'Permission denied when fetching issue details.';
+        if (error.response?.data?.errors) {
+          const errors = error.response.data.errors;
+          errorMessage += ` SonarQube errors: ${errors.map((e: any) => e.msg).join(', ')}`;
+        }
+        errorMessage += '\n\n🔧 Possible solutions:\n' +
+          '  1. Verify the token has "Browse" permission on the project\n' +
+          '  2. Check if the issue exists and key is correct\n' +
+          '  3. Ensure the token hasn\'t expired';
+        throw new Error(errorMessage);
+      }
+
+      throw error;
+    }
+  }
+
+  /**
+   * Find similar issues already FIXED in this project for a given rule key.
+   * NOTE: SonarQube does not provide a "diff" of the fix; this returns metadata only.
+   */
+  async getSimilarFixedIssues(ruleKey: string, maxResults: number = 3): Promise<SonarIssue[]> {
+    const params: Record<string, any> = {
+      componentKeys: this.projectKey,
+      rules: ruleKey,
+      issueStatuses: 'FIXED',
+      p: 1,
+      ps: Math.min(Math.max(1, maxResults), 500),
+      _t: Date.now(),
+    };
+
+    try {
+      const response = await this.client.get('/api/issues/search', { params });
+      return response.data.issues ?? [];
+    } catch (error: any) {
+      console.error('Error fetching similar fixed issues:', error.response?.status, error.response?.data);
+      throw error;
+    }
+  }
+
+  /**
+   * List test file components in the current project (best-effort).
+   * Used as a fallback when local filesystem heuristics cannot find related tests.
+   */
+  async getProjectTestFiles(pageSize: number = 200): Promise<Array<{ key: string; path?: string; name?: string }>> {
+    const params: Record<string, any> = {
+      component: this.projectKey,
+      qualifiers: 'UTS',
+      ps: Math.min(Math.max(1, pageSize), 500),
+    };
+
+    try {
+      const response = await this.client.get('/api/components/tree', { params });
+      return response.data.components ?? [];
+    } catch (error: any) {
+      console.warn('Failed to fetch project test files:', error.response?.status, error.response?.data);
+      return [];
+    }
+  }
+
   async getIssues(filter?: IssueFilter): Promise<SonarIssue[]> {
     const PAGE_SIZE = 500; // SonarQube max page size
     const baseParams: Record<string, any> = {
@@ -697,30 +792,121 @@ export class SonarQubeClient {
     contextLines: number = 5
   ): Promise<string> {
     try {
-      // Use /api/sources/raw for clean code without HTML markup
-      const response = await this.client.get('/api/sources/raw', {
-        params: {
-          key: component
-        }
-      });
+      const safeLine = Math.max(1, line);
+      const safeContext = Math.max(0, contextLines);
+      const from = Math.max(1, safeLine - safeContext);
+      const to = safeLine + safeContext;
 
-      if (!response.data) {
-        return '';
-      }
-
-      // Split the raw code into lines and extract the context range
-      const allLines = response.data.split('\n');
-      const startLine = Math.max(0, line - contextLines - 1);
-      const endLine = Math.min(allLines.length, line + contextLines);
-
-      // Extract the context lines and rejoin
-      const contextLines_array = allLines.slice(startLine, endLine);
-      return contextLines_array.join('\n');
+      const lines = await this.getSourceLines(component, from, to, { bestEffort: true });
+      if (!Array.isArray(lines) || lines.length === 0) return '';
+      return lines.map(l => l.code ?? '').join('\n');
     } catch (error: any) {
-      // Fallback: if raw endpoint fails, return empty string
-      console.warn(`Failed to fetch raw source for ${component}:`, error.message);
+      // Best-effort: return empty string if sources cannot be fetched
+      console.warn(`Failed to fetch source context for ${component}:`, error.message);
       return '';
     }
+  }
+
+  /**
+   * Fetch source lines for a specific range.
+   * Best-effort mode returns an empty array on errors.
+   */
+  async getSourceLines(
+    componentKey: string,
+    from: number,
+    to: number,
+    options?: { bestEffort?: boolean }
+  ): Promise<SonarLineCoverage[]> {
+    const safeFrom = Math.max(1, from);
+    const safeTo = Math.max(safeFrom, to);
+
+    // Prefer range-based plain text when available (internal endpoint, but stable across many SonarQube versions)
+    try {
+      const indexLines = await this.getSourceLinesFromIndex(componentKey, safeFrom, safeTo);
+      if (Array.isArray(indexLines) && indexLines.length > 0) return indexLines as SonarLineCoverage[];
+    } catch (error: any) {
+      // Fall back to raw-file download + slicing
+    }
+
+    try {
+      const fileLines = await this.getRawFileLines(componentKey);
+      if (fileLines.length === 0) return [];
+
+      const startIndex = Math.max(0, safeFrom - 1);
+      const endIndex = Math.min(fileLines.length, safeTo);
+      const slice = fileLines.slice(startIndex, endIndex);
+
+      return slice.map((code, idx) => ({
+        line: safeFrom + idx,
+        code
+      })) as SonarLineCoverage[];
+    } catch (error: any) {
+      if (options?.bestEffort) {
+        console.warn(`Failed to fetch source lines for ${componentKey}:`, error.message);
+        return [];
+      }
+      throw error;
+    }
+  }
+
+  private async getSourceLinesFromIndex(
+    componentKey: string,
+    from: number,
+    to: number
+  ): Promise<Array<{ line: number; code: string }>> {
+    const safeFrom = Math.max(1, from);
+    const safeTo = Math.max(safeFrom, to);
+
+    const response = await this.client.get('/api/sources/index', {
+      params: {
+        resource: componentKey,
+        from: safeFrom,
+        // `to` is excluded on this endpoint, so ask for (inclusive + 1)
+        to: safeTo + 1
+      }
+    });
+
+    const data = response.data;
+    const lines: Array<{ line: number; code: string }> = [];
+
+    const collectFromObject = (obj: Record<string, unknown>) => {
+      for (const [lineStr, codeVal] of Object.entries(obj)) {
+        const lineNumber = Number(lineStr);
+        if (!Number.isFinite(lineNumber)) continue;
+        if (lineNumber < safeFrom || lineNumber > safeTo) continue;
+        lines.push({
+          line: lineNumber,
+          code: typeof codeVal === 'string' ? codeVal : ''
+        });
+      }
+    };
+
+    if (Array.isArray(data)) {
+      for (const block of data) {
+        if (!block || typeof block !== 'object') continue;
+        collectFromObject(block as Record<string, unknown>);
+      }
+    } else if (data && typeof data === 'object') {
+      collectFromObject(data as Record<string, unknown>);
+    }
+
+    lines.sort((a, b) => a.line - b.line);
+    return lines;
+  }
+
+  private async getRawFileLines(componentKey: string): Promise<string[]> {
+    const cached = this.rawSourceLinesCache.get(componentKey);
+    if (cached) return cached;
+
+    const response = await this.client.get('/api/sources/raw', {
+      params: { key: componentKey },
+      responseType: 'text'
+    });
+
+    const raw = typeof response.data === 'string' ? response.data : '';
+    const lines = raw ? raw.split('\n') : [];
+    this.rawSourceLinesCache.set(componentKey, lines);
+    return lines;
   }
 
   async waitForAnalysis(timeout: number = 60000): Promise<void> {
