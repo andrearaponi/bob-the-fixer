@@ -1,6 +1,6 @@
 {
   "name": "bob-the-fixer",
-  "version": "0.3.9",
+  "version": "0.5.0",
   "description": "MCP Server for Code Quality & Security Analysis - SonarQube integration through Model Context Protocol",
   "private": true,
   "workspaces": [

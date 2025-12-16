@@ -88,8 +88,6 @@ export class ScanErrorParser {
    * Parse error message and categorize it
    */
   parse(errorMessage: string): ParsedScanError {
-    const normalizedMessage = errorMessage.toLowerCase();
-
     for (const { pattern, category, extractInfo } of this.errorPatterns) {
       const match = errorMessage.match(pattern);
       if (match) {

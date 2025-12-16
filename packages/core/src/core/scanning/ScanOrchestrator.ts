@@ -8,7 +8,6 @@ import { selectScanner, ScannerType } from '../../sonar/scanner-selection.js';
 import { ProjectManager, ProjectConfig } from '../../universal/project-manager.js';
 import { SonarAdmin } from '../../universal/sonar-admin.js';
 import { getLogger, StructuredLogger } from '../../shared/logger/structured-logger.js';
-import { sanitizePath } from '../../infrastructure/security/input-sanitization.js';
 import { ScanParams, ScanResult, Issue, ProjectContext, FallbackAnalysisResult, PreScanValidationResult, SonarPropertiesConfig } from '../../shared/types/index.js';
 import { ScanFallbackService, PropertiesFileManager } from './fallback/index.js';
 import { PreScanValidator } from './validation/index.js';
@@ -109,12 +108,16 @@ export class ScanOrchestrator {
     const scannerType = selectScanner(projectContext, { forceCliScanner: config.forceCliScanner });
     const usesBuildToolPlugin = scannerType === ScannerType.MAVEN || scannerType === ScannerType.GRADLE;
 
+    // Track if we actually generate the properties file
+    let propertiesFileGenerated = false;
+
     if (!propertiesFileExists && !usesBuildToolPlugin && usedScannerParams && usedScannerParams.length > 0) {
       await this.autoGeneratePropertiesFileFromParams(
         projectPath,
         usedScannerParams,
         correlationId
       );
+      propertiesFileGenerated = true;
     }
 
     // 7. Fetch and filter results
@@ -131,7 +134,7 @@ export class ScanOrchestrator {
     const projectMetrics = await this.fetchProjectMetrics(sonarClient);
 
     // 8. Build and return scan result
-    return this.buildScanResult(config, issues, securityHotspots, projectContext, projectMetrics, validationResult, scannerType, config.forceCliScanner);
+    return this.buildScanResult(config, issues, securityHotspots, projectContext, projectMetrics, validationResult, scannerType, config.forceCliScanner, propertiesFileGenerated);
   }
 
   /**
@@ -178,25 +181,6 @@ export class ScanOrchestrator {
       this.logger.warn(`Pre-scan validation failed (continuing anyway): ${error instanceof Error ? error.message : 'Unknown error'}`, {}, correlationId);
       return undefined;
     }
-  }
-
-  /**
-   * Resolve project path with smart defaults
-   */
-  private async resolveProjectPath(
-    projectPath: string | undefined,
-    correlationId?: string
-  ): Promise<string> {
-    if (!projectPath) {
-      projectPath = process.cwd();
-      this.logger.debug('No projectPath provided, using current working directory', { projectPath }, correlationId);
-    }
-
-    const safePath = sanitizePath(projectPath);
-    this.projectManager.setWorkingDirectory(safePath);
-    this.logger.debug('Working directory set', { workingDirectory: safePath }, correlationId);
-
-    return safePath;
   }
 
   /**
@@ -562,7 +546,8 @@ export class ScanOrchestrator {
     projectMetrics?: any,
     validationResult?: PreScanValidationResult,
     scannerType?: ScannerType,
-    forceCliScanner?: boolean
+    forceCliScanner?: boolean,
+    propertiesFileGenerated?: boolean
   ): ScanResult {
     const issuesBySeverity: Record<string, number> = {};
     const issuesByType: Record<string, number> = {};
@@ -669,7 +654,8 @@ export class ScanOrchestrator {
       } : undefined,
       configSource,
       scannerType: scannerType as 'maven' | 'gradle' | 'cli' | undefined,
-      scannerForced: forceCliScanner
+      scannerForced: forceCliScanner,
+      propertiesFileGenerated
     };
   }
 

@@ -3,7 +3,6 @@
  * Handles library path conversion strategies for cross-machine portability
  */
 import * as path from 'path';
-import * as os from 'os';
 
 /**
  * Strategy for handling library paths
@@ -75,7 +74,6 @@ export function isUnderProject(filePath: string, projectPath: string): boolean {
  * Useful when the properties file needs to work across different machines
  */
 function convertToGlobPatterns(libraries: string[], projectPath: string): string {
-  const homeDir = os.homedir();
   const patterns: Set<string> = new Set();
 
   for (const lib of libraries) {

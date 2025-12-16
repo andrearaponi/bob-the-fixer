@@ -37,7 +37,7 @@ export class ProjectDeletionService {
     const validationError = this.validateArgs(options);
     if (validationError) return validationError;
 
-    const { projectKey, confirm } = options;
+    const { projectKey } = options;
 
     const config = await this.projectManager.getOrCreateConfig();
 

@@ -65,7 +65,7 @@ export class ProjectSetup {
     const setup = await this.sonarAdmin.setupProject(projectContext);
 
     // Save configuration
-    const config = await this.saveConfiguration(setup, projectContext);
+    await this.saveConfiguration(setup, projectContext);
 
     // Verify setup
     await verifyProjectSetup(setup.project.key, setup.token.token);

@@ -231,10 +231,21 @@ describe('SonarGetIssueDetailsSchema', () => {
 
   it('should apply default values', () => {
     const result = SonarGetIssueDetailsSchema.parse({ issueKey: 'AX123' });
-    expect(result.contextLines).toBe(5);
+    expect(result.contextLines).toBe(10);
     expect(result.includeRuleDetails).toBe(true);
     expect(result.includeCodeExamples).toBe(true);
     expect(result.includeFilePath).toBe(true);
+    expect(result.includeFileHeader).toBe(true);
+    expect(result.headerMaxLines).toBe(60);
+    expect(result.includeDataFlow).toBe('auto');
+    expect(result.maxFlows).toBe(3);
+    expect(result.maxFlowSteps).toBe(12);
+    expect(result.flowContextLines).toBe(3);
+    expect(result.includeSimilarFixed).toBe(false);
+    expect(result.maxSimilarIssues).toBe(3);
+    expect(result.includeRelatedTests).toBe(false);
+    expect(result.includeCoverageHints).toBeUndefined();
+    expect(result.includeScmHints).toBe(false);
   });
 
   it('should reject empty issue key', () => {

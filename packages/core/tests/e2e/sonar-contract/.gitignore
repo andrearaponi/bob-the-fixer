@@ -1,0 +1,6 @@
+.work/
+target/
+.env
+.env.*
+*.log
+

@@ -29,7 +29,23 @@ export async function handleGetIssueDetails(
       contextLines: validatedArgs.contextLines,
       includeRuleDetails: validatedArgs.includeRuleDetails,
       includeCodeExamples: validatedArgs.includeCodeExamples,
-      includeFilePath: validatedArgs.includeFilePath
+      includeFilePath: validatedArgs.includeFilePath,
+
+      includeFileHeader: validatedArgs.includeFileHeader,
+      headerMaxLines: validatedArgs.headerMaxLines,
+
+      includeDataFlow: validatedArgs.includeDataFlow,
+      maxFlows: validatedArgs.maxFlows,
+      maxFlowSteps: validatedArgs.maxFlowSteps,
+      flowContextLines: validatedArgs.flowContextLines,
+
+      includeSimilarFixed: validatedArgs.includeSimilarFixed,
+      maxSimilarIssues: validatedArgs.maxSimilarIssues,
+
+      includeRelatedTests: validatedArgs.includeRelatedTests,
+      includeCoverageHints: validatedArgs.includeCoverageHints,
+
+      includeScmHints: validatedArgs.includeScmHints,
     },
     correlationId
   );

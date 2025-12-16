@@ -13,6 +13,8 @@ export interface SonarIssue {
   };
   flows: any[];
   status: string;
+  resolution?: string;
+  closeDate?: string;
   message: string;
   type: 'BUG' | 'VULNERABILITY' | 'CODE_SMELL' | 'SECURITY_HOTSPOT';
   effort?: string;
@@ -69,6 +71,11 @@ export interface IssueFilter {
   resolved?: boolean;
   tags?: string[];
   components?: string[];
+  /**
+   * Include extended fields (transitions, actions, comments, impacts).
+   * Default: false (to reduce response size and context window usage)
+   */
+  includeExtendedFields?: boolean;
 }
 
 export interface SonarRuleDetails {

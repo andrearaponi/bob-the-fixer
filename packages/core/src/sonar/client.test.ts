@@ -322,28 +322,38 @@ describe('SonarQubeClient', () => {
       );
     });
 
-    it('should fetch source code context successfully from raw endpoint', async () => {
-      const rawCode = `function example() {
-  const used = "value";
-  const unused = "test"; // Issue here
-  return used;
-}`;
-      mockAxiosInstance.get = vi.fn(async () => ({ data: rawCode }));
+    it('should fetch source code context successfully from sources/index endpoint', async () => {
+      const indexResponse = [
+        {
+          '1': 'function example() {',
+          '2': '  const used = "value";',
+          '3': '  const unused = "test"; // Issue here',
+          '4': '  return used;',
+          '5': '}'
+        }
+      ];
+      mockAxiosInstance.get = vi.fn(async () => ({ data: indexResponse }));
 
       const source = await client.getSourceContext('test-file.ts', 2, 2);
 
-      expect(mockAxiosInstance.get).toHaveBeenCalledWith('/api/sources/raw', {
+      expect(mockAxiosInstance.get).toHaveBeenCalledWith('/api/sources/index', {
         params: {
-          key: 'test-file.ts'
-        },
+          resource: 'test-file.ts',
+          from: 1,
+          to: 5,
+        }
       });
-      // Should return a string with context lines around line 2
       expect(typeof source).toBe('string');
-      expect(source.length).toBeGreaterThan(0);
+      expect(source).toContain('function example()');
+      expect(source).toContain('const unused');
     });
 
     it('should handle missing source code gracefully', async () => {
-      mockAxiosInstance.get = vi.fn(async () => ({ data: null }));
+      mockAxiosInstance.get = vi.fn(async (url: string) => {
+        if (url === '/api/sources/index') return { data: [] };
+        if (url === '/api/sources/raw') return { data: null };
+        return { data: null };
+      });
 
       const source = await client.getSourceContext('missing-file.ts', 1, 5);
 
@@ -359,6 +369,121 @@ describe('SonarQubeClient', () => {
     });
   });
 
+  describe('getSourceLines', () => {
+    beforeEach(() => {
+      client = new SonarQubeClient(
+        'http://localhost:9000',
+        'test-token',
+        'test-project'
+      );
+    });
+
+    it('should fetch source lines from sources/index endpoint and return numbered lines', async () => {
+      const indexResponse = [
+        {
+          '2': 'line2',
+          '3': 'line3',
+          '4': 'line4',
+        }
+      ];
+      mockAxiosInstance.get = vi.fn(async () => ({ data: indexResponse }));
+
+      const lines = await client.getSourceLines('test-file.ts', 2, 4);
+
+      expect(mockAxiosInstance.get).toHaveBeenCalledWith('/api/sources/index', {
+        params: { resource: 'test-file.ts', from: 2, to: 5 },
+      });
+      expect(lines).toEqual([
+        { line: 2, code: 'line2' },
+        { line: 3, code: 'line3' },
+        { line: 4, code: 'line4' },
+      ]);
+    });
+
+    it('should fall back to raw endpoint when sources/index fails', async () => {
+      const rawCode = `line1
+line2
+line3
+line4
+line5`;
+
+      mockAxiosInstance.get = vi.fn(async (url: string) => {
+        if (url === '/api/sources/index') throw new Error('index not available');
+        if (url === '/api/sources/raw') return { data: rawCode };
+        return { data: null };
+      });
+
+      const lines = await client.getSourceLines('test-file.ts', 2, 4);
+
+      expect(mockAxiosInstance.get).toHaveBeenCalledWith('/api/sources/index', {
+        params: { resource: 'test-file.ts', from: 2, to: 5 },
+      });
+      expect(mockAxiosInstance.get).toHaveBeenCalledWith('/api/sources/raw', {
+        params: { key: 'test-file.ts' },
+        responseType: 'text',
+      });
+      expect(lines).toEqual([
+        { line: 2, code: 'line2' },
+        { line: 3, code: 'line3' },
+        { line: 4, code: 'line4' },
+      ]);
+    });
+
+    it('should return empty array on errors when bestEffort=true', async () => {
+      mockAxiosInstance.get = vi.fn(async () => { throw new Error('API error'); });
+
+      const lines = await client.getSourceLines('test-file.ts', 1, 5, { bestEffort: true });
+
+      expect(lines).toEqual([]);
+    });
+  });
+
+  describe('getIssueByKey', () => {
+    beforeEach(() => {
+      client = new SonarQubeClient(
+        'http://localhost:9000',
+        'test-token',
+        'test-project'
+      );
+    });
+
+    it('should fetch a single issue by key', async () => {
+      mockAxiosInstance.get = vi.fn(async () => ({ data: { issues: [mockIssuesResponse.issues[0]] } }));
+
+      const issue = await client.getIssueByKey('AX123');
+
+      expect(mockAxiosInstance.get).toHaveBeenCalledWith('/api/issues/search', {
+        params: expect.objectContaining({
+          componentKeys: 'test-project',
+          issues: 'AX123',
+          p: 1,
+          ps: 1,
+        }),
+      });
+      expect(issue).toEqual(mockIssuesResponse.issues[0]);
+    });
+
+    it('should include additionalFields when requested', async () => {
+      mockAxiosInstance.get = vi.fn(async () => ({ data: { issues: [mockIssuesResponse.issues[0]] } }));
+
+      await client.getIssueByKey('AX123', { includeExtendedFields: true });
+
+      expect(mockAxiosInstance.get).toHaveBeenCalledWith('/api/issues/search', {
+        params: expect.objectContaining({
+          additionalFields: '_all',
+        }),
+      });
+    });
+
+    it('should return null when issue not found', async () => {
+      mockAxiosInstance.get = vi.fn(async () => ({ data: { issues: [] } }));
+
+      const issue = await client.getIssueByKey('AX123');
+
+      expect(issue).toBeNull();
+    });
+  });
+
   describe('getIssues with enhanced context', () => {
     beforeEach(() => {
       client = new SonarQubeClient(
@@ -368,10 +493,54 @@ describe('SonarQubeClient', () => {
       );
     });
 
-    it('should request additionalFields=_all for full issue context', async () => {
+    // ============================================================================
+    // CONDITIONAL ADDITIONAL FIELDS TESTS
+    // ============================================================================
+
+    it('should NOT include additionalFields by default', async () => {
       mockAxiosInstance.get = vi.fn(async () => ({ data: mockIssuesResponse }));
 
       await client.getIssues();
+
+      // Verify additionalFields is NOT in the params by default
+      const calls = mockAxiosInstance.get.mock.calls;
+      const issuesSearchCalls = calls.filter((call: any[]) => call[0] === '/api/issues/search');
+      expect(issuesSearchCalls.length).toBeGreaterThan(0);
+
+      const firstCallParams = issuesSearchCalls[0][1].params;
+      expect(firstCallParams.additionalFields).toBeUndefined();
+    });
+
+    it('should include additionalFields=_all when includeExtendedFields=true', async () => {
+      mockAxiosInstance.get = vi.fn(async () => ({ data: mockIssuesResponse }));
+
+      await client.getIssues({ includeExtendedFields: true });
+
+      const calls = mockAxiosInstance.get.mock.calls;
+      const issuesSearchCalls = calls.filter((call: any[]) => call[0] === '/api/issues/search');
+      const firstCallParams = issuesSearchCalls[0][1].params;
+      expect(firstCallParams.additionalFields).toBe('_all');
+    });
+
+    it('should NOT include additionalFields when includeExtendedFields=false', async () => {
+      mockAxiosInstance.get = vi.fn(async () => ({ data: mockIssuesResponse }));
+
+      await client.getIssues({ includeExtendedFields: false });
+
+      const calls = mockAxiosInstance.get.mock.calls;
+      const issuesSearchCalls = calls.filter((call: any[]) => call[0] === '/api/issues/search');
+      const firstCallParams = issuesSearchCalls[0][1].params;
+      expect(firstCallParams.additionalFields).toBeUndefined();
+    });
+
+    // ============================================================================
+    // EXISTING TESTS (updated to use includeExtendedFields)
+    // ============================================================================
+
+    it('should request additionalFields=_all when includeExtendedFields is true', async () => {
+      mockAxiosInstance.get = vi.fn(async () => ({ data: mockIssuesResponse }));
+
+      await client.getIssues({ includeExtendedFields: true });
 
       expect(mockAxiosInstance.get).toHaveBeenCalledWith(
         '/api/issues/search',
@@ -442,6 +611,85 @@ describe('SonarQubeClient', () => {
         'test-project'
       );
     });
+
+    // ============================================================================
+    // RULE DETAILS CACHING TESTS
+    // ============================================================================
+
+    it('should cache rule details on first call', async () => {
+      mockAxiosInstance.get = vi.fn(async () => ({ data: mockRule }));
+
+      // First call - should fetch from API
+      await client.getRuleDetails('typescript:S1234');
+      // Second call - should use cache
+      await client.getRuleDetails('typescript:S1234');
+
+      // Should only call API once (cached on second call)
+      expect(mockAxiosInstance.get).toHaveBeenCalledTimes(1);
+    });
+
+    it('should cache different rules independently', async () => {
+      mockAxiosInstance.get = vi.fn(async () => ({ data: mockRule }));
+
+      await client.getRuleDetails('typescript:S1234');
+      await client.getRuleDetails('java:S5678');
+
+      // Should call API twice (different rules)
+      expect(mockAxiosInstance.get).toHaveBeenCalledTimes(2);
+    });
+
+    it('should return cached data on subsequent calls', async () => {
+      mockAxiosInstance.get = vi.fn(async () => ({ data: mockRule }));
+
+      const firstResult = await client.getRuleDetails('typescript:S1234');
+      const secondResult = await client.getRuleDetails('typescript:S1234');
+
+      // Both calls should return same data
+      expect(firstResult).toEqual(secondResult);
+      expect(firstResult.key).toBe('typescript:S1234');
+    });
+
+    it('should expire cache after TTL', async () => {
+      vi.useFakeTimers();
+      mockAxiosInstance.get = vi.fn(async () => ({ data: mockRule }));
+
+      // First call
+      await client.getRuleDetails('typescript:S1234');
+
+      // Advance time by 6 minutes (past 5 min TTL)
+      vi.advanceTimersByTime(6 * 60 * 1000);
+
+      // Second call - should fetch again (cache expired)
+      await client.getRuleDetails('typescript:S1234');
+
+      // Should have called API twice
+      expect(mockAxiosInstance.get).toHaveBeenCalledTimes(2);
+
+      vi.useRealTimers();
+    });
+
+    it('should not expire cache before TTL', async () => {
+      vi.useFakeTimers();
+      mockAxiosInstance.get = vi.fn(async () => ({ data: mockRule }));
+
+      // First call
+      await client.getRuleDetails('typescript:S1234');
+
+      // Advance time by 4 minutes (before 5 min TTL)
+      vi.advanceTimersByTime(4 * 60 * 1000);
+
+      // Second call - should use cache (not expired yet)
+      await client.getRuleDetails('typescript:S1234');
+
+      // Should have called API only once
+      expect(mockAxiosInstance.get).toHaveBeenCalledTimes(1);
+
+      vi.useRealTimers();
+    });
+
+    // ============================================================================
+    // EXISTING TESTS
+    // ============================================================================
 
     it('should fetch rule details successfully', async () => {
       mockAxiosInstance.get = vi.fn(async () => ({ data: mockRule }));
@@ -1653,6 +1901,126 @@ describe('SonarQubeClient', () => {
 
       expect(lastCommand).toContain('sonar-scanner');
       expect(lastCommand).toContain('-Dsonar.java.binaries=build/classes/java/main');
+    });
+  });
+
+  // ============================================================================
+  // LAZY LOADING DESCRIPTIONS TESTS
+  // ============================================================================
+  describe('getUniqueRulesInfo - Lazy Loading', () => {
+    const mockIssues = [
+      { rule: 'typescript:S1234', message: 'Test issue 1' },
+      { rule: 'typescript:S1234', message: 'Test issue 2' },
+      { rule: 'java:S5678', message: 'Test issue 3' }
+    ];
+
+    const mockRuleWithDescription = {
+      rule: {
+        key: 'typescript:S1234',
+        name: 'Unused variables',
+        type: 'CODE_SMELL',
+        severity: 'MAJOR',
+        status: 'READY',
+        langName: 'TypeScript',
+        scope: 'MAIN',
+        isExternal: false,
+        descriptionSections: [{ key: 'root_cause', content: 'This is a long description about unused variables...' }],
+        mdDesc: 'Markdown description here',
+        cleanCodeAttribute: 'CLEAR',
+        cleanCodeAttributeCategory: 'INTENTIONAL',
+        impacts: [{ softwareQuality: 'MAINTAINABILITY', severity: 'MEDIUM' }]
+      }
+    };
+
+    beforeEach(() => {
+      client = new SonarQubeClient(
+        'http://localhost:9000',
+        'test-token',
+        'test-project'
+      );
+    });
+
+    it('should NOT include descriptions by default (includeDescriptions=false)', async () => {
+      mockAxiosInstance.get = vi.fn(async (url: string) => {
+        if (url === '/api/rules/show') {
+          return { data: mockRuleWithDescription };
+        }
+        return { data: {} };
+      });
+
+      const ruleCache = await client.getUniqueRulesInfo(mockIssues);
+
+      // Descriptions should NOT be present
+      expect(ruleCache['typescript:S1234'].description).toBeUndefined();
+      expect(ruleCache['java:S5678'].description).toBeUndefined();
+
+      // Basic info should still be present
+      expect(ruleCache['typescript:S1234'].key).toBe('typescript:S1234');
+      expect(ruleCache['typescript:S1234'].name).toBe('Unused variables');
+      expect(ruleCache['typescript:S1234'].type).toBe('CODE_SMELL');
+      expect(ruleCache['typescript:S1234'].severity).toBe('MAJOR');
+    });
+
+    it('should include descriptions when includeDescriptions=true', async () => {
+      mockAxiosInstance.get = vi.fn(async (url: string) => {
+        if (url === '/api/rules/show') {
+          return { data: mockRuleWithDescription };
+        }
+        return { data: {} };
+      });
+
+      const ruleCache = await client.getUniqueRulesInfo(mockIssues, { includeDescriptions: true });
+
+      // Descriptions should be present
+      expect(ruleCache['typescript:S1234'].description).toBe('This is a long description about unused variables...');
+
+      // Basic info should still be present
+      expect(ruleCache['typescript:S1234'].key).toBe('typescript:S1234');
+      expect(ruleCache['typescript:S1234'].name).toBe('Unused variables');
+    });
+
+    it('should save ~50% token size when descriptions excluded', async () => {
+      mockAxiosInstance.get = vi.fn(async (url: string) => {
+        if (url === '/api/rules/show') {
+          return { data: mockRuleWithDescription };
+        }
+        return { data: {} };
+      });
+
+      // Get without descriptions (default)
+      const ruleCacheCompact = await client.getUniqueRulesInfo(mockIssues);
+      const compactSize = JSON.stringify(ruleCacheCompact).length;
+
+      // Get with descriptions
+      const ruleCacheFull = await client.getUniqueRulesInfo(mockIssues, { includeDescriptions: true });
+      const fullSize = JSON.stringify(ruleCacheFull).length;
+
+      // Compact should be significantly smaller (at least 20% smaller)
+      expect(compactSize).toBeLessThan(fullSize * 0.8);
+    });
+
+    it('should use rule cache for repeated calls', async () => {
+      mockAxiosInstance.get = vi.fn(async (url: string) => {
+        if (url === '/api/rules/show') {
+          return { data: mockRuleWithDescription };
+        }
+        return { data: {} };
+      });
+
+      // First call - should fetch from API
+      await client.getUniqueRulesInfo(mockIssues);
+      const firstCallCount = mockAxiosInstance.get.mock.calls.filter(
+        (call: any[]) => call[0] === '/api/rules/show'
+      ).length;
+
+      // Second call - should use cache
+      await client.getUniqueRulesInfo(mockIssues);
+      const secondCallCount = mockAxiosInstance.get.mock.calls.filter(
+        (call: any[]) => call[0] === '/api/rules/show'
+      ).length;
+
+      // No new API calls should be made (cache hit)
+      expect(secondCallCount).toBe(firstCallCount);
     });
   });
 });
