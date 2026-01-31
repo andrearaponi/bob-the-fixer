@@ -265,7 +265,7 @@ describe('VersionChecker', () => {
         ok: true,
         json: async () => [
           {
-            tag_name: '0.5.0',
+            tag_name: '0.5.5',
             draft: true,
             prerelease: false,
           },
@@ -294,7 +294,7 @@ describe('VersionChecker', () => {
         ok: true,
         json: async () => [
           {
-            tag_name: '0.5.0-beta',
+            tag_name: '0.5.5-beta',
             draft: false,
             prerelease: true,
           },
@@ -323,7 +323,7 @@ describe('VersionChecker', () => {
         ok: true,
         json: async () => [
           {
-            tag_name: '0.5.0-beta',
+            tag_name: '0.5.5-beta',
             draft: false,
             prerelease: true,
           },
@@ -337,7 +337,7 @@ describe('VersionChecker', () => {
 
       const result = await checker.checkForUpdates();
 
-      expect(result?.latestVersion).toBe('0.5.0-beta');
+      expect(result?.latestVersion).toBe('0.5.5-beta');
     });
   });
 
