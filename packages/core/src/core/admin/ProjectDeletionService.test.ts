@@ -12,6 +12,7 @@ const mockSonarAdmin = {
   deleteProject: vi.fn(() => Promise.resolve(false)),
   listTokens: vi.fn(() => Promise.resolve([])),
   revokeToken: vi.fn(() => Promise.resolve(false)),
+  getProjectDetails: vi.fn(() => Promise.resolve(null)),
   client: {
     get: vi.fn(() => Promise.resolve({ data: {} })),
   },
@@ -66,17 +67,11 @@ describe('ProjectDeletionService', () => {
     mockSonarAdmin.deleteProject = vi.fn(async () => true);
     mockSonarAdmin.listTokens = vi.fn(async () => []);
     mockSonarAdmin.revokeToken = vi.fn(async () => true);
-    mockSonarAdmin.client.get = vi.fn(async () => ({
-      data: {
-        components: [
-          {
-            key: 'test-project',
-            name: 'Test Project',
-            lastAnalysisDate: '2024-01-01',
-            visibility: 'public',
-          },
-        ],
-      },
+    mockSonarAdmin.getProjectDetails = vi.fn(async () => ({
+      key: 'test-project',
+      name: 'Test Project',
+      lastAnalysisDate: '2024-01-01',
+      visibility: 'public',
     }));
   });
 
@@ -194,7 +189,7 @@ describe('ProjectDeletionService', () => {
     });
 
     it('should handle missing project details gracefully', async () => {
-      mockSonarAdmin.client.get = vi.fn(async () => { throw new Error('API error'); });
+      mockSonarAdmin.getProjectDetails = vi.fn(async () => { throw new Error('API error'); });
 
       const options: DeleteProjectOptions = {
         projectKey: 'test-project',
@@ -307,16 +302,11 @@ describe('ProjectDeletionService', () => {
     });
 
     it('should handle project with never analyzed', async () => {
-      mockSonarAdmin.client.get = vi.fn(async () => ({
-        data: {
-          components: [
-            {
-              key: 'test-project',
-              name: 'Test Project',
-              visibility: 'private',
-            },
-          ],
-        },
+      mockSonarAdmin.getProjectDetails = vi.fn(async () => ({
+        key: 'test-project',
+        name: 'Test Project',
+        visibility: 'private',
+        // lastAnalysisDate is undefined - never analyzed
       }));
 
       const options: DeleteProjectOptions = {
@@ -332,11 +322,7 @@ describe('ProjectDeletionService', () => {
 
   describe('edge cases', () => {
     it('should handle empty project details response', async () => {
-      mockSonarAdmin.client.get = vi.fn(async () => ({
-        data: {
-          components: [],
-        },
-      }));
+      mockSonarAdmin.getProjectDetails = vi.fn(async () => null);
 
       const options: DeleteProjectOptions = {
         projectKey: 'test-project',

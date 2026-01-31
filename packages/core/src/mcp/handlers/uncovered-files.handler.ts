@@ -4,14 +4,70 @@
  * Handles projects without coverage data by providing setup instructions
  */
 
+import { injectable, inject } from 'tsyringe';
+import { IProjectManager } from '../../infrastructure/interfaces/index.js';
+import { TOKENS } from '../../infrastructure/di/tokens.js';
 import { ProjectManager } from '../../universal/project-manager.js';
 import { SonarQubeClient } from '../../sonar/index.js';
 import { validateInput, SonarGetUncoveredFilesSchema } from '../../shared/validators/mcp-schemas.js';
 import { MCPResponse } from '../../shared/types/index.js';
 import { FilesWithCoverageGaps, FileWithCoverage } from '../../sonar/types.js';
+import { IHandler } from './IHandler.js';
+
+/**
+ * Arguments for uncovered files handler
+ */
+export interface UncoveredFilesArgs {
+  targetCoverage?: number;
+  maxFiles?: number;
+  sortBy?: 'coverage' | 'uncoveredLines' | 'path';
+  includeNoCoverageData?: boolean;
+}
+
+/**
+ * Injectable uncovered files handler class
+ */
+@injectable()
+export class UncoveredFilesHandler implements IHandler<UncoveredFilesArgs> {
+  constructor(
+    @inject(TOKENS.ProjectManager) private readonly projectManager: IProjectManager
+  ) {}
+
+  async handle(args: UncoveredFilesArgs, correlationId?: string): Promise<MCPResponse> {
+    // Validate input
+    const validatedArgs = validateInput(SonarGetUncoveredFilesSchema, args, 'sonar_get_uncovered_files');
+
+    const config = await this.projectManager.getOrCreateConfig();
+    const projectContext = await this.projectManager.analyzeProject();
+
+    const sonarClient = new SonarQubeClient(
+      config.sonarUrl,
+      config.sonarToken,
+      config.sonarProjectKey,
+      projectContext
+    );
+
+    // Fetch files with coverage gaps
+    const result = await sonarClient.getFilesWithCoverageGaps({
+      targetCoverage: validatedArgs.targetCoverage,
+      maxFiles: validatedArgs.maxFiles,
+      sortBy: validatedArgs.sortBy,
+      includeNoCoverageData: validatedArgs.includeNoCoverageData
+    });
+
+    // Generate response based on coverage state
+    const summary = generateCoverageSummary(result, validatedArgs.targetCoverage ?? 100);
+
+    return {
+      content: [{ type: 'text', text: summary }]
+    };
+  }
+}
 
 /**
  * Handle get uncovered files MCP tool request
+ *
+ * @deprecated Use UncoveredFilesHandler class with DI instead
  */
 export async function handleGetUncoveredFiles(
   args: any,
@@ -20,7 +76,7 @@ export async function handleGetUncoveredFiles(
   // Validate input
   const validatedArgs = validateInput(SonarGetUncoveredFilesSchema, args, 'sonar_get_uncovered_files');
 
-  // Initialize dependencies
+  // Initialize dependencies (legacy approach)
   const projectManager = new ProjectManager();
   const config = await projectManager.getOrCreateConfig();
   const projectContext = await projectManager.analyzeProject();

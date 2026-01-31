@@ -9,6 +9,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
+    setupFiles: ['./vitest.setup.ts'],
     include: ['src/**/*.test.ts', 'tests/**/*.test.ts'],
     exclude: ['node_modules', 'dist'],
     coverage: {
@@ -23,13 +24,12 @@ export default defineConfig({
         'tests/fixtures/**',
         'src/universal-mcp-server.ts', // Entry point, hard to test directly
       ],
-      // Thresholds disabilitati temporaneamente per permettere la scansione SonarQube
-      // thresholds: {
-      //   lines: 80,
-      //   functions: 80,
-      //   branches: 80,
-      //   statements: 80,
-      // },
+      thresholds: {
+        lines: 70,
+        functions: 70,
+        branches: 60,
+        statements: 70,
+      },
     },
     testTimeout: 10000,
     hookTimeout: 10000,
