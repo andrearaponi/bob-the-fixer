@@ -1,3 +1,4 @@
+import { injectable, inject } from 'tsyringe';
 import express, { Express, Request, Response } from 'express';
 import cors from 'cors';
 import { rateLimit } from 'express-rate-limit';
@@ -5,6 +6,8 @@ import { Server } from 'http';
 import { SessionManager } from './session-manager.js';
 import { ProjectManager } from '../project-manager.js';
 import { SonarQubeClient } from '../../sonar/client.js';
+import { IProjectManager } from '../../infrastructure/interfaces/index.js';
+import { TOKENS } from '../../infrastructure/di/tokens.js';
 
 export interface HTTPServerConfig {
   port?: number;
@@ -16,13 +19,30 @@ export interface HTTPServerConfig {
   };
 }
 
+/**
+ * HTTP Server for MCP and REST API endpoints
+ *
+ * Supports dependency injection for testability while maintaining
+ * backwards compatibility with direct instantiation.
+ */
+@injectable()
 export class MCPHTTPServer {
   private app: Express;
   private server?: Server;
   private sessionManager: SessionManager;
   private config: Required<HTTPServerConfig>;
+  private projectManager: IProjectManager;
 
-  constructor(config: HTTPServerConfig = {}) {
+  /**
+   * Create an HTTP server instance
+   *
+   * @param config - Server configuration options
+   * @param injectedProjectManager - Optional injected ProjectManager for DI
+   */
+  constructor(
+    config: HTTPServerConfig = {},
+    @inject(TOKENS.ProjectManager) injectedProjectManager?: IProjectManager
+  ) {
     this.config = {
       port: config.port ?? 3000,
       host: config.host ?? '0.0.0.0',
@@ -32,6 +52,9 @@ export class MCPHTTPServer {
         max: config.rateLimit?.max ?? 60
       }
     };
+
+    // Use injected ProjectManager or create a new one (backwards compatibility)
+    this.projectManager = injectedProjectManager ?? new ProjectManager();
 
     this.app = express();
     this.sessionManager = new SessionManager();
@@ -72,8 +95,7 @@ export class MCPHTTPServer {
     // Get SonarQube issues endpoint
     this.app.get('/api/issues', async (req: Request, res: Response) => {
       try {
-        const projectManager = new ProjectManager();
-        const config = await projectManager.getOrCreateConfig();
+        const config = await this.projectManager.getOrCreateConfig();
 
         if (!config) {
           return res.status(404).json({

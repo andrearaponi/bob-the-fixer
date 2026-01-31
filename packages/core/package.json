@@ -1,6 +1,6 @@
 {
   "name": "@bob-the-fixer/core",
-  "version": "0.5.0",
+  "version": "0.5.5",
   "description": "Enterprise-grade MCP Server - SonarQube integration with advanced security for AI assistants",
   "main": "dist/universal-mcp-server.js",
   "types": "dist/universal-mcp-server.d.ts",
@@ -25,6 +25,8 @@
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
     "express-rate-limit": "^8.2.1",
+    "reflect-metadata": "^0.2.2",
+    "tsyringe": "^4.10.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {

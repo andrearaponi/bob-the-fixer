@@ -7,7 +7,7 @@ Docs: https://bobthefixer.dev/docs
 
 [![CI](https://github.com/andrearaponi/bob-the-fixer/actions/workflows/ci.yml/badge.svg)](https://github.com/andrearaponi/bob-the-fixer/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/andrearaponi/bob-the-fixer/branch/main/graph/badge.svg)](https://codecov.io/gh/andrearaponi/bob-the-fixer)
-![Version](https://img.shields.io/badge/version-0.5.0-blue)
+![Version](https://img.shields.io/badge/version-0.5.5-blue)
 ![License](https://img.shields.io/badge/license-AGPL--3.0-green)
 ![MCP](https://img.shields.io/badge/MCP-Compatible-brightgreen)
 

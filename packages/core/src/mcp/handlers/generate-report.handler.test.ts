@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { handleGenerateReport } from './generate-report.handler';
+import { handleGenerateReport, GenerateReportHandler } from './generate-report.handler';
 
 // Mock all dependencies
 vi.mock('../../core/reporting/index.js');
@@ -176,5 +176,114 @@ describe('handleGenerateReport', () => {
       const result = await handleGenerateReport({});
       expect(result.isError).toBe(true);
     });
+  });
+});
+
+describe('GenerateReportHandler (DI class)', () => {
+  let mockReportGenerator: any;
+  let mockProjectManager: any;
+  let mockLogger: any;
+
+  beforeEach(async () => {
+    // Mock logger
+    const loggerModule = await import('../../shared/logger/structured-logger');
+    mockLogger = {
+      error: vi.fn(() => {})
+    };
+    vi.mocked(loggerModule.getLogger).mockImplementation(function() { return mockLogger; });
+
+    // Mock ReportGenerator
+    const reportingModule = await import('../../core/reporting/index.js');
+    mockReportGenerator = {
+      generateReport: vi.fn(async () =>
+        'QUALITY REPORT\n\nProject: test-project'
+      )
+    };
+    vi.mocked(reportingModule.ReportGenerator).mockImplementation(function() { return mockReportGenerator; });
+
+    // Mock dependencies
+    mockProjectManager = {};
+  });
+
+  it('should handle report generation with default format', async () => {
+    const handler = new GenerateReportHandler(mockProjectManager);
+    const result = await handler.handle({});
+
+    expect(mockReportGenerator.generateReport).toHaveBeenCalledWith(
+      { format: 'summary' },
+      undefined
+    );
+    expect(result.content[0].type).toBe('text');
+    expect(result.content[0].text).toContain('QUALITY REPORT');
+  });
+
+  it('should handle summary format', async () => {
+    const handler = new GenerateReportHandler(mockProjectManager);
+    await handler.handle({ format: 'summary' });
+
+    expect(mockReportGenerator.generateReport).toHaveBeenCalledWith(
+      { format: 'summary' },
+      undefined
+    );
+  });
+
+  it('should handle detailed format', async () => {
+    const handler = new GenerateReportHandler(mockProjectManager);
+    await handler.handle({ format: 'detailed' });
+
+    expect(mockReportGenerator.generateReport).toHaveBeenCalledWith(
+      { format: 'detailed' },
+      undefined
+    );
+  });
+
+  it('should handle json format', async () => {
+    const handler = new GenerateReportHandler(mockProjectManager);
+    await handler.handle({ format: 'json' });
+
+    expect(mockReportGenerator.generateReport).toHaveBeenCalledWith(
+      { format: 'json' },
+      undefined
+    );
+  });
+
+  it('should pass correlation ID through', async () => {
+    const handler = new GenerateReportHandler(mockProjectManager);
+    await handler.handle({}, 'test-corr-report');
+
+    expect(mockReportGenerator.generateReport).toHaveBeenCalledWith(
+      expect.anything(),
+      'test-corr-report'
+    );
+  });
+
+  it('should catch and return generator errors gracefully', async () => {
+    mockReportGenerator.generateReport = vi.fn(async () => {
+      throw new Error('DI Report generation failed');
+    });
+
+    const handler = new GenerateReportHandler(mockProjectManager);
+    const result = await handler.handle({});
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('Report generation failed');
+    expect(result.content[0].text).toContain('DI Report generation failed');
+  });
+
+  it('should log errors with correlation ID', async () => {
+    const error = new Error('DI Generation error');
+    mockReportGenerator.generateReport = vi.fn(async () => {
+      throw error;
+    });
+
+    const handler = new GenerateReportHandler(mockProjectManager);
+    await handler.handle({}, 'test-corr-123');
+
+    expect(mockLogger.error).toHaveBeenCalledWith(
+      'Error generating report',
+      error,
+      {},
+      'test-corr-123'
+    );
   });
 });

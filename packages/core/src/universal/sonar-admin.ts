@@ -1,31 +1,20 @@
 import axios, { AxiosInstance } from 'axios';
-import { ProjectContext } from './project-manager.js';
+import { injectable } from 'tsyringe';
+import { ProjectContext } from '../infrastructure/interfaces/IProjectManager.js';
+import {
+  ISonarAdmin,
+  SonarProjectInfo,
+  SonarTokenInfo,
+  QualityGateTemplate,
+  ProjectSetupResult,
+  CleanupResult,
+} from '../infrastructure/interfaces/ISonarAdmin.js';
 
-export interface SonarProjectInfo {
-  key: string;
-  name: string;
-  qualifier: string;
-  visibility: string;
-}
+// Re-export types for backwards compatibility
+export type { SonarProjectInfo, SonarTokenInfo, QualityGateTemplate };
 
-export interface SonarTokenInfo {
-  name: string;
-  token: string;
-  type: string;
-  createdAt: string;
-  expirationDate?: string;
-}
-
-export interface QualityGateTemplate {
-  name: string;
-  conditions: Array<{
-    metric: string;
-    op: string;
-    error: string;
-  }>;
-}
-
-export class SonarAdmin {
+@injectable()
+export class SonarAdmin implements ISonarAdmin {
   public readonly client: AxiosInstance;  // Make public for advanced operations
 
   constructor(
@@ -68,6 +57,34 @@ export class SonarAdmin {
       return response.data.components && response.data.components.length > 0;
     } catch {
       return false;
+    }
+  }
+
+  /**
+   * Get project details from SonarQube
+   */
+  async getProjectDetails(projectKey: string): Promise<{
+    key: string;
+    name: string;
+    lastAnalysisDate?: string;
+    visibility: string;
+  } | null> {
+    try {
+      const response = await this.client.get('/api/projects/search', {
+        params: { projects: projectKey }
+      });
+      if (response.data.components?.length > 0) {
+        const project = response.data.components[0];
+        return {
+          key: project.key,
+          name: project.name,
+          lastAnalysisDate: project.lastAnalysisDate,
+          visibility: project.visibility
+        };
+      }
+      return null;
+    } catch {
+      return null;
     }
   }
 
@@ -281,11 +298,7 @@ export class SonarAdmin {
   /**
    * Setup complete project with token and quality gate
    */
-  async setupProject(context: ProjectContext): Promise<{
-    project: SonarProjectInfo;
-    token: SonarTokenInfo;
-    qualityGate: QualityGateTemplate;
-  }> {
+  async setupProject(context: ProjectContext): Promise<ProjectSetupResult> {
     const projectKey = this.generateProjectKey(context);
     const tokenName = `bobthefixer-${context.name}-${Date.now()}`;
 
@@ -355,10 +368,7 @@ export class SonarAdmin {
   /**
    * Cleanup old projects and tokens
    */
-  async cleanup(olderThanDays: number = 30): Promise<{
-    deletedProjects: string[];
-    revokedTokens: string[];
-  }> {
+  async cleanup(olderThanDays: number = 30): Promise<CleanupResult> {
     const cutoffDate = new Date(Date.now() - olderThanDays * 24 * 60 * 60 * 1000);
     const deletedProjects: string[] = [];
     const revokedTokens: string[] = [];
