@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { handleGetQualityGate } from './quality-gate.handler';
+import { handleGetQualityGate, QualityGateHandler } from './quality-gate.handler';
 
 // Mock all dependencies
 vi.mock('../../core/analysis/index.js');
@@ -131,5 +131,186 @@ describe('handleGetQualityGate', () => {
       const result = await handleGetQualityGate({});
       expect(result.isError).toBe(true);
     });
+  });
+
+  describe('Quality gate status variations', () => {
+    it('should handle OK status', async () => {
+      mockQualityAnalyzer.getQualityGate = vi.fn(async () =>
+        'QUALITY GATE STATUS\n\nStatus: OK\nAll conditions passed'
+      );
+
+      const result = await handleGetQualityGate({});
+
+      expect(result.content[0].text).toContain('OK');
+    });
+
+    it('should handle WARN status', async () => {
+      mockQualityAnalyzer.getQualityGate = vi.fn(async () =>
+        'QUALITY GATE STATUS\n\nStatus: WARN\nSome conditions are in warning'
+      );
+
+      const result = await handleGetQualityGate({});
+
+      expect(result.content[0].text).toContain('WARN');
+    });
+
+    it('should handle ERROR status', async () => {
+      mockQualityAnalyzer.getQualityGate = vi.fn(async () =>
+        'QUALITY GATE STATUS\n\nStatus: ERROR\nQuality gate failed'
+      );
+
+      const result = await handleGetQualityGate({});
+
+      expect(result.content[0].text).toContain('ERROR');
+    });
+
+    it('should handle detailed conditions reporting', async () => {
+      mockQualityAnalyzer.getQualityGate = vi.fn(async () =>
+        'QUALITY GATE STATUS\n\nStatus: PASSED\n\nConditions:\n- Coverage: 80% (required: 70%) ✓\n- Duplications: 3% (required: <5%) ✓'
+      );
+
+      const result = await handleGetQualityGate({});
+
+      expect(result.content[0].text).toContain('Conditions:');
+      expect(result.content[0].text).toContain('Coverage:');
+    });
+  });
+
+  describe('Edge cases', () => {
+    it('should handle missing conditions in response', async () => {
+      mockQualityAnalyzer.getQualityGate = vi.fn(async () =>
+        'QUALITY GATE STATUS\n\nStatus: PASSED\n\nNo conditions configured'
+      );
+
+      const result = await handleGetQualityGate({});
+
+      expect(result.content[0].text).toContain('No conditions configured');
+    });
+
+    it('should handle period information in response', async () => {
+      mockQualityAnalyzer.getQualityGate = vi.fn(async () =>
+        'QUALITY GATE STATUS\n\nStatus: PASSED\nPeriod: New Code (since last version)\n\nConditions Met: 5/5'
+      );
+
+      const result = await handleGetQualityGate({});
+
+      expect(result.content[0].text).toContain('Period:');
+    });
+
+    it('should handle quality gate with failed conditions listed', async () => {
+      mockQualityAnalyzer.getQualityGate = vi.fn(async () =>
+        'QUALITY GATE STATUS\n\nStatus: FAILED\n\nFailed Conditions:\n- Coverage: 50% (required: 80%)\n- Bugs: 5 (required: 0)'
+      );
+
+      const result = await handleGetQualityGate({});
+
+      expect(result.content[0].text).toContain('Failed Conditions:');
+      expect(result.content[0].text).toContain('Coverage: 50%');
+    });
+
+    it('should handle errors with specific error types', async () => {
+      mockQualityAnalyzer.getQualityGate = vi.fn(async () => {
+        throw new Error('Project not found');
+      });
+
+      const result = await handleGetQualityGate({});
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('Project not found');
+    });
+
+    it('should handle network timeout errors', async () => {
+      mockQualityAnalyzer.getQualityGate = vi.fn(async () => {
+        throw new Error('Request timeout');
+      });
+
+      const result = await handleGetQualityGate({});
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('Request timeout');
+    });
+  });
+});
+
+describe('QualityGateHandler (DI class)', () => {
+  let mockQualityAnalyzer: any;
+  let mockProjectManager: any;
+
+  beforeEach(async () => {
+    // Mock QualityAnalyzer
+    const analysisModule = await import('../../core/analysis/index.js');
+    mockQualityAnalyzer = {
+      getQualityGate: vi.fn(async () =>
+        'QUALITY GATE STATUS\n\nStatus: PASSED\nConditions Met: 5/5'
+      )
+    };
+    vi.mocked(analysisModule.QualityAnalyzer).mockImplementation(function() { return mockQualityAnalyzer; });
+
+    // Mock dependencies
+    mockProjectManager = {};
+  });
+
+  it('should handle getting quality gate status', async () => {
+    const handler = new QualityGateHandler(mockProjectManager);
+    const result = await handler.handle({});
+
+    expect(mockQualityAnalyzer.getQualityGate).toHaveBeenCalled();
+    expect(result.content[0].type).toBe('text');
+    expect(result.content[0].text).toContain('QUALITY GATE STATUS');
+  });
+
+  it('should pass correlation ID through', async () => {
+    const handler = new QualityGateHandler(mockProjectManager);
+    await handler.handle({}, 'test-corr-qg');
+
+    expect(mockQualityAnalyzer.getQualityGate).toHaveBeenCalledWith('test-corr-qg');
+  });
+
+  it('should handle PASSED status', async () => {
+    mockQualityAnalyzer.getQualityGate = vi.fn(async () =>
+      'QUALITY GATE STATUS\n\nStatus: PASSED'
+    );
+
+    const handler = new QualityGateHandler(mockProjectManager);
+    const result = await handler.handle({});
+
+    expect(result.content[0].text).toContain('PASSED');
+    expect(result.isError).toBeUndefined();
+  });
+
+  it('should handle FAILED status', async () => {
+    mockQualityAnalyzer.getQualityGate = vi.fn(async () =>
+      'QUALITY GATE STATUS\n\nStatus: FAILED'
+    );
+
+    const handler = new QualityGateHandler(mockProjectManager);
+    const result = await handler.handle({});
+
+    expect(result.content[0].text).toContain('FAILED');
+  });
+
+  it('should return error response on analyzer errors', async () => {
+    mockQualityAnalyzer.getQualityGate = vi.fn(async () => {
+      throw new Error('DI Failed to fetch quality gate');
+    });
+
+    const handler = new QualityGateHandler(mockProjectManager);
+    const result = await handler.handle({});
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('Quality Gate Status Error');
+    expect(result.content[0].text).toContain('DI Failed to fetch quality gate');
+  });
+
+  it('should handle errors without message', async () => {
+    mockQualityAnalyzer.getQualityGate = vi.fn(async () => {
+      throw {};
+    });
+
+    const handler = new QualityGateHandler(mockProjectManager);
+    const result = await handler.handle({});
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('Unknown error');
   });
 });

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { handleAutoSetup } from './project-setup.handler';
+import { handleAutoSetup, ProjectSetupHandler } from './project-setup.handler';
 
 // Mock all dependencies
 vi.mock('../../core/project/index.js');
@@ -186,5 +186,232 @@ describe('handleAutoSetup', () => {
         undefined
       );
     });
+  });
+
+  describe('Template types', () => {
+    it('should handle strict template', async () => {
+      mockValidateInput.mockImplementation(() => ({
+        force: false,
+        template: 'strict',
+      }));
+
+      await handleAutoSetup({ template: 'strict' });
+
+      expect(mockProjectSetup.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          template: 'strict',
+        }),
+        undefined
+      );
+    });
+
+    it('should handle balanced template', async () => {
+      mockValidateInput.mockImplementation(() => ({
+        force: false,
+        template: 'balanced',
+      }));
+
+      await handleAutoSetup({ template: 'balanced' });
+
+      expect(mockProjectSetup.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          template: 'balanced',
+        }),
+        undefined
+      );
+    });
+
+    it('should handle permissive template', async () => {
+      mockValidateInput.mockImplementation(() => ({
+        force: false,
+        template: 'permissive',
+      }));
+
+      await handleAutoSetup({ template: 'permissive' });
+
+      expect(mockProjectSetup.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          template: 'permissive',
+        }),
+        undefined
+      );
+    });
+
+    it('should handle force with existing project', async () => {
+      mockValidateInput.mockImplementation(() => ({
+        force: true,
+        template: 'balanced',
+      }));
+
+      const result = await handleAutoSetup({ force: true, template: 'balanced' });
+
+      expect(mockProjectSetup.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          force: true,
+          template: 'balanced',
+        }),
+        undefined
+      );
+      expect(result.content[0].text).toContain('PROJECT SETUP COMPLETE');
+    });
+  });
+
+  describe('Edge cases', () => {
+    it('should handle project already exists scenario', async () => {
+      const project = await import('../../core/project/index.js');
+      vi.mocked(project.ProjectSetup.formatSetupResult).mockImplementation(function() {
+        return 'PROJECT SETUP COMPLETE\n\nProject Key: existing-project\nStatus: already_exists\nLanguages: typescript';
+      });
+
+      const result = await handleAutoSetup({});
+
+      expect(result.content[0].text).toContain('already_exists');
+    });
+
+    it('should handle multi-language detection', async () => {
+      mockProjectSetup.execute = vi.fn(async () => ({
+        projectKey: 'multi-lang-project',
+        projectName: 'Multi Language Project',
+        status: 'created',
+        configPath: '/test/project/sonar-project.properties',
+        detectedLanguages: ['typescript', 'javascript', 'css'],
+      }));
+
+      const project = await import('../../core/project/index.js');
+      vi.mocked(project.ProjectSetup.formatSetupResult).mockImplementation(function() {
+        return 'PROJECT SETUP COMPLETE\n\nProject Key: multi-lang-project\nStatus: created\nLanguages: typescript, javascript, css';
+      });
+
+      const result = await handleAutoSetup({});
+
+      expect(result.content[0].text).toContain('typescript, javascript, css');
+    });
+
+    it('should handle empty args object', async () => {
+      mockValidateInput.mockImplementation(() => ({
+        force: undefined,
+        template: undefined,
+      }));
+
+      await handleAutoSetup({});
+
+      expect(mockProjectSetup.execute).toHaveBeenCalled();
+    });
+
+    it('should handle setup with config path in result', async () => {
+      const project = await import('../../core/project/index.js');
+      vi.mocked(project.ProjectSetup.formatSetupResult).mockImplementation(function() {
+        return 'PROJECT SETUP COMPLETE\n\nProject Key: test-project\nConfig: /path/to/sonar-project.properties';
+      });
+
+      const result = await handleAutoSetup({});
+
+      expect(result.content[0].text).toContain('Config:');
+    });
+  });
+});
+
+describe('ProjectSetupHandler (DI class)', () => {
+  let mockProjectSetup: any;
+  let mockProjectManager: any;
+  let mockSonarAdmin: any;
+  let mockValidateInput: any;
+
+  beforeEach(async () => {
+    // Mock validateInput
+    const validators = await import('../../shared/validators/mcp-schemas');
+    mockValidateInput = vi.mocked(validators.validateInput);
+    mockValidateInput.mockImplementation(() => ({
+      force: false,
+      template: undefined,
+    }));
+
+    // Mock ProjectSetup
+    const project = await import('../../core/project/index.js');
+    mockProjectSetup = {
+      execute: vi.fn(async () => ({
+        projectKey: 'test-project',
+        projectName: 'Test Project',
+        status: 'created',
+        configPath: '/test/project/sonar-project.properties',
+        detectedLanguages: ['typescript'],
+      })),
+    };
+    vi.mocked(project.ProjectSetup).mockImplementation(function() { return mockProjectSetup; });
+    vi.mocked(project.ProjectSetup.formatSetupResult).mockImplementation(function() {
+      return 'PROJECT SETUP COMPLETE\n\nProject Key: test-project\nStatus: created';
+    });
+
+    // Mock dependencies
+    mockProjectManager = {};
+    mockSonarAdmin = {};
+  });
+
+  it('should handle setup with default parameters', async () => {
+    const handler = new ProjectSetupHandler(mockProjectManager, mockSonarAdmin);
+    const result = await handler.handle({});
+
+    expect(mockValidateInput).toHaveBeenCalled();
+    expect(mockProjectSetup.execute).toHaveBeenCalled();
+    expect(result.content[0].type).toBe('text');
+    expect(result.content[0].text).toContain('PROJECT SETUP COMPLETE');
+  });
+
+  it('should handle setup with force parameter', async () => {
+    mockValidateInput.mockImplementation(() => ({
+      force: true,
+      template: undefined,
+    }));
+
+    const handler = new ProjectSetupHandler(mockProjectManager, mockSonarAdmin);
+    await handler.handle({ force: true });
+
+    expect(mockProjectSetup.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ force: true }),
+      undefined
+    );
+  });
+
+  it('should handle setup with template parameter', async () => {
+    mockValidateInput.mockImplementation(() => ({
+      force: false,
+      template: 'strict',
+    }));
+
+    const handler = new ProjectSetupHandler(mockProjectManager, mockSonarAdmin);
+    await handler.handle({ template: 'strict' });
+
+    expect(mockProjectSetup.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ template: 'strict' }),
+      undefined
+    );
+  });
+
+  it('should pass correlation ID through', async () => {
+    const handler = new ProjectSetupHandler(mockProjectManager, mockSonarAdmin);
+    await handler.handle({}, 'test-corr-789');
+
+    expect(mockProjectSetup.execute).toHaveBeenCalledWith(
+      expect.anything(),
+      'test-corr-789'
+    );
+  });
+
+  it('should propagate validation errors', async () => {
+    mockValidateInput.mockImplementation(() => {
+      throw new Error('DI Validation failed');
+    });
+
+    const handler = new ProjectSetupHandler(mockProjectManager, mockSonarAdmin);
+    await expect(handler.handle({})).rejects.toThrow('DI Validation failed');
+  });
+
+  it('should propagate service errors', async () => {
+    mockProjectSetup.execute = vi.fn(async () => {
+      throw new Error('DI Setup failed');
+    });
+
+    const handler = new ProjectSetupHandler(mockProjectManager, mockSonarAdmin);
+    await expect(handler.handle({})).rejects.toThrow('DI Setup failed');
   });
 });
