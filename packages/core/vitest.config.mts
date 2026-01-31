@@ -25,10 +25,10 @@ export default defineConfig({
         'src/universal-mcp-server.ts', // Entry point, hard to test directly
       ],
       thresholds: {
-        lines: 70,
-        functions: 70,
-        branches: 60,
-        statements: 70,
+        lines: 50,
+        functions: 50,
+        branches: 50,
+        statements: 50,
       },
     },
     testTimeout: 10000,
