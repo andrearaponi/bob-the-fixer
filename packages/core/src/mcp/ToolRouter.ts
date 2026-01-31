@@ -18,6 +18,7 @@ import { handleGetQualityGate } from './handlers/quality-gate.handler.js';
 import { handleGetProjectMetrics } from './handlers/project-metrics.handler.js';
 import { handleGetTechnicalDebt } from './handlers/technical-debt.handler.js';
 import { handleGetDuplicationSummary } from './handlers/duplication-summary.handler.js';
+import { handleGetDuplicationDetails } from './handlers/duplication-details.handler.js';
 import { handleGenerateReport } from './handlers/generate-report.handler.js';
 import { handleCleanup } from './handlers/cleanup.handler.js';
 import { handleDiagnosePermissions } from './handlers/diagnose-permissions.handler.js';
@@ -44,6 +45,7 @@ export const toolRoutes: Record<string, ToolHandler> = {
   sonar_generate_report: handleGenerateReport,
   sonar_get_quality_gate: handleGetQualityGate,
   sonar_get_duplication_summary: handleGetDuplicationSummary,
+  sonar_get_duplication_details: handleGetDuplicationDetails,
   sonar_get_technical_debt: handleGetTechnicalDebt,
   sonar_cleanup: handleCleanup,
   sonar_diagnose_permissions: handleDiagnosePermissions,
