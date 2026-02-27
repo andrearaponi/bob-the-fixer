@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { handleGetDuplicationSummary } from './duplication-summary.handler';
+import { handleGetDuplicationSummary, DuplicationSummaryHandler } from './duplication-summary.handler';
 
 // Mock all dependencies
 vi.mock('../../core/analysis/index.js');
@@ -173,5 +173,127 @@ describe('handleGetDuplicationSummary', () => {
       const result = await handleGetDuplicationSummary({});
       expect(result.isError).toBe(true);
     });
+  });
+});
+
+describe('DuplicationSummaryHandler (DI class)', () => {
+  let mockQualityAnalyzer: any;
+  let mockProjectManager: any;
+  let mockValidateInput: any;
+
+  beforeEach(async () => {
+    // Mock validateInput
+    const validators = await import('../../shared/validators/mcp-schemas');
+    mockValidateInput = vi.mocked(validators.validateInput);
+    mockValidateInput.mockImplementation(() => ({
+      sortBy: 'density',
+      maxResults: 50,
+      pageSize: 100
+    }));
+
+    // Mock QualityAnalyzer
+    const analysisModule = await import('../../core/analysis/index.js');
+    mockQualityAnalyzer = {
+      getDuplicationSummary: vi.fn(async () =>
+        'DUPLICATION SUMMARY\n\nTotal duplicated files: 3'
+      )
+    };
+    vi.mocked(analysisModule.QualityAnalyzer).mockImplementation(function() { return mockQualityAnalyzer; });
+
+    // Mock dependencies
+    mockProjectManager = {};
+  });
+
+  it('should handle duplication summary with default parameters', async () => {
+    const handler = new DuplicationSummaryHandler(mockProjectManager);
+    const result = await handler.handle({});
+
+    expect(mockValidateInput).toHaveBeenCalled();
+    expect(mockQualityAnalyzer.getDuplicationSummary).toHaveBeenCalled();
+    expect(result.content[0].type).toBe('text');
+    expect(result.content[0].text).toContain('DUPLICATION SUMMARY');
+  });
+
+  it('should handle sortBy density', async () => {
+    mockValidateInput.mockImplementation(() => ({
+      sortBy: 'density',
+      maxResults: 10,
+      pageSize: 100
+    }));
+
+    const handler = new DuplicationSummaryHandler(mockProjectManager);
+    await handler.handle({ sortBy: 'density' });
+
+    expect(mockQualityAnalyzer.getDuplicationSummary).toHaveBeenCalledWith(
+      expect.objectContaining({ sortBy: 'density' }),
+      undefined
+    );
+  });
+
+  it('should handle sortBy lines', async () => {
+    mockValidateInput.mockImplementation(() => ({
+      sortBy: 'lines',
+      maxResults: 10,
+      pageSize: 100
+    }));
+
+    const handler = new DuplicationSummaryHandler(mockProjectManager);
+    await handler.handle({ sortBy: 'lines' });
+
+    expect(mockQualityAnalyzer.getDuplicationSummary).toHaveBeenCalledWith(
+      expect.objectContaining({ sortBy: 'lines' }),
+      undefined
+    );
+  });
+
+  it('should handle sortBy blocks', async () => {
+    mockValidateInput.mockImplementation(() => ({
+      sortBy: 'blocks',
+      maxResults: 10,
+      pageSize: 100
+    }));
+
+    const handler = new DuplicationSummaryHandler(mockProjectManager);
+    await handler.handle({ sortBy: 'blocks' });
+
+    expect(mockQualityAnalyzer.getDuplicationSummary).toHaveBeenCalledWith(
+      expect.objectContaining({ sortBy: 'blocks' }),
+      undefined
+    );
+  });
+
+  it('should pass correlation ID through', async () => {
+    const handler = new DuplicationSummaryHandler(mockProjectManager);
+    await handler.handle({}, 'test-corr-dup');
+
+    expect(mockQualityAnalyzer.getDuplicationSummary).toHaveBeenCalledWith(
+      expect.anything(),
+      'test-corr-dup'
+    );
+  });
+
+  it('should catch and return validation errors gracefully', async () => {
+    mockValidateInput.mockImplementation(() => {
+      throw new Error('DI Invalid sort option');
+    });
+
+    const handler = new DuplicationSummaryHandler(mockProjectManager);
+    const result = await handler.handle({});
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('Error getting duplication summary');
+    expect(result.content[0].text).toContain('DI Invalid sort option');
+  });
+
+  it('should catch and return analyzer errors gracefully', async () => {
+    mockQualityAnalyzer.getDuplicationSummary = vi.fn(async () => {
+      throw new Error('DI Failed to fetch duplication data');
+    });
+
+    const handler = new DuplicationSummaryHandler(mockProjectManager);
+    const result = await handler.handle({});
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('DI Failed to fetch duplication data');
   });
 });

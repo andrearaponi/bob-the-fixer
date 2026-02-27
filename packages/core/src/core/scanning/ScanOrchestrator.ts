@@ -3,10 +3,11 @@
  * Orchestrates the complete scan workflow: setup → scan → analysis → results
  */
 
+import { injectable, inject } from 'tsyringe';
 import { SonarQubeClient, waitForCacheRefresh } from '../../sonar/index.js';
 import { selectScanner, ScannerType } from '../../sonar/scanner-selection.js';
-import { ProjectManager, ProjectConfig } from '../../universal/project-manager.js';
-import { SonarAdmin } from '../../universal/sonar-admin.js';
+import { IProjectManager, ISonarAdmin, ProjectConfig } from '../../infrastructure/interfaces/index.js';
+import { TOKENS } from '../../infrastructure/di/tokens.js';
 import { getLogger, StructuredLogger } from '../../shared/logger/structured-logger.js';
 import { ScanParams, ScanResult, Issue, ProjectContext, FallbackAnalysisResult, PreScanValidationResult, SonarPropertiesConfig } from '../../shared/types/index.js';
 import { ScanFallbackService, PropertiesFileManager } from './fallback/index.js';
@@ -44,13 +45,14 @@ export class ScanRecoverableError extends Error {
   }
 }
 
+@injectable()
 export class ScanOrchestrator {
   private readonly logger: StructuredLogger;
   private readonly options: Required<ScanOptions>;
 
   constructor(
-    private readonly projectManager: ProjectManager,
-    private readonly sonarAdmin: SonarAdmin,
+    @inject(TOKENS.ProjectManager) private readonly projectManager: IProjectManager,
+    @inject(TOKENS.SonarAdmin) private readonly sonarAdmin: ISonarAdmin,
     options: ScanOptions = {}
   ) {
     this.logger = getLogger();

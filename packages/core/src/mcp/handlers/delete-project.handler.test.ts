@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { handleDeleteProject } from './delete-project.handler';
+import { handleDeleteProject, DeleteProjectHandler } from './delete-project.handler';
 
 // Mock all dependencies
 vi.mock('../../core/admin/index.js');
@@ -128,5 +128,92 @@ describe('handleDeleteProject', () => {
         undefined
       );
     });
+  });
+});
+
+describe('DeleteProjectHandler (DI class)', () => {
+  let mockProjectDeletionService: any;
+  let mockProjectManager: any;
+  let mockSonarAdmin: any;
+
+  beforeEach(async () => {
+    // Mock ProjectDeletionService
+    const admin = await import('../../core/admin/index.js');
+    mockProjectDeletionService = {
+      deleteProject: vi.fn(async () =>
+        'PROJECT DELETED\n\nProject Key: test-project\nStatus: Successfully deleted'
+      ),
+    };
+    vi.mocked(admin.ProjectDeletionService).mockImplementation(function() { return mockProjectDeletionService; });
+
+    // Mock dependencies
+    mockProjectManager = {};
+    mockSonarAdmin = {};
+  });
+
+  it('should handle delete project successfully', async () => {
+    const handler = new DeleteProjectHandler(mockProjectManager, mockSonarAdmin);
+    const result = await handler.handle({ projectKey: 'test-project', confirm: true });
+
+    expect(mockProjectDeletionService.deleteProject).toHaveBeenCalledWith(
+      { projectKey: 'test-project', confirm: true },
+      undefined
+    );
+    expect(result.content[0].type).toBe('text');
+    expect(result.content[0].text).toContain('PROJECT DELETED');
+  });
+
+  it('should pass correlation ID through', async () => {
+    const handler = new DeleteProjectHandler(mockProjectManager, mockSonarAdmin);
+    await handler.handle({ projectKey: 'test-project', confirm: true }, 'test-corr-del');
+
+    expect(mockProjectDeletionService.deleteProject).toHaveBeenCalledWith(
+      expect.anything(),
+      'test-corr-del'
+    );
+  });
+
+  it('should handle projectKey parameter', async () => {
+    const handler = new DeleteProjectHandler(mockProjectManager, mockSonarAdmin);
+    await handler.handle({ projectKey: 'my-custom-project', confirm: true });
+
+    expect(mockProjectDeletionService.deleteProject).toHaveBeenCalledWith(
+      expect.objectContaining({ projectKey: 'my-custom-project' }),
+      undefined
+    );
+  });
+
+  it('should handle confirm false', async () => {
+    const handler = new DeleteProjectHandler(mockProjectManager, mockSonarAdmin);
+    await handler.handle({ projectKey: 'test-project', confirm: false });
+
+    expect(mockProjectDeletionService.deleteProject).toHaveBeenCalledWith(
+      expect.objectContaining({ confirm: false }),
+      undefined
+    );
+  });
+
+  it('should catch and return service errors gracefully', async () => {
+    mockProjectDeletionService.deleteProject = vi.fn(async () => {
+      throw new Error('DI Project not found');
+    });
+
+    const handler = new DeleteProjectHandler(mockProjectManager, mockSonarAdmin);
+    const result = await handler.handle({ projectKey: 'missing-project', confirm: true });
+
+    expect(result.content[0].text).toContain('PROJECT DELETION ERROR');
+    expect(result.content[0].text).toContain('DI Project not found');
+    expect(result.content[0].text).toContain('could not be deleted');
+  });
+
+  it('should not throw on service errors', async () => {
+    mockProjectDeletionService.deleteProject = vi.fn(async () => {
+      throw new Error('Permission denied');
+    });
+
+    const handler = new DeleteProjectHandler(mockProjectManager, mockSonarAdmin);
+    await expect(
+      handler.handle({ projectKey: 'test-project', confirm: true })
+    ).resolves.toHaveProperty('content');
   });
 });

@@ -1,28 +1,18 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as crypto from 'crypto';
+import { injectable } from 'tsyringe';
+import {
+  IProjectManager,
+  ProjectConfig,
+  ProjectContext,
+} from '../infrastructure/interfaces/index.js';
 
-export interface ProjectConfig {
-  sonarUrl: string;
-  sonarToken: string;
-  sonarProjectKey: string;
-  createdAt: string;
-  language?: string;
-  framework?: string;
-  logLevel?: string;
-  forceCliScanner?: boolean;
-}
+// Re-export types for backwards compatibility
+export type { ProjectConfig, ProjectContext };
 
-export interface ProjectContext {
-  path: string;
-  name: string;
-  language: string[];
-  framework?: string;
-  buildTool?: string;
-  packageManager?: string;
-}
-
-export class ProjectManager {
+@injectable()
+export class ProjectManager implements IProjectManager {
   private readonly CONFIG_FILE = 'bobthefixer.env';
   private readonly GITIGNORE_ENTRY = 'bobthefixer.env';
 

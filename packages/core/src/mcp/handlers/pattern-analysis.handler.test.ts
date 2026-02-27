@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { handleAnalyzePatterns } from './pattern-analysis.handler';
+import { handleAnalyzePatterns, PatternAnalysisHandler } from './pattern-analysis.handler';
 
 // Mock all dependencies
 vi.mock('../../core/analysis/index.js');
@@ -180,5 +180,300 @@ describe('handleAnalyzePatterns', () => {
 
       await expect(handleAnalyzePatterns({})).rejects.toThrow('SonarQube API error');
     });
+  });
+
+  describe('GroupBy options', () => {
+    it('should handle groupBy pattern', async () => {
+      mockValidateInput.mockImplementation(() => ({
+        groupBy: 'pattern'
+      }));
+
+      await handleAnalyzePatterns({ groupBy: 'pattern' });
+
+      expect(mockPatternAnalysisService.analyze).toHaveBeenCalledWith(
+        expect.objectContaining({
+          groupBy: 'pattern'
+        }),
+        undefined
+      );
+    });
+
+    it('should handle groupBy fixability', async () => {
+      mockValidateInput.mockImplementation(() => ({
+        groupBy: 'fixability'
+      }));
+
+      await handleAnalyzePatterns({ groupBy: 'fixability' });
+
+      expect(mockPatternAnalysisService.analyze).toHaveBeenCalledWith(
+        expect.objectContaining({
+          groupBy: 'fixability'
+        }),
+        undefined
+      );
+    });
+
+    it('should format pattern grouping output correctly', async () => {
+      mockPatternAnalysisService.analyze = vi.fn(async () => ({
+        report: 'PATTERN ANALYSIS\n\nGrouped by: pattern\n\n1. java:S1135 - 20 issues\n2. java:S1192 - 15 issues'
+      }));
+
+      const result = await handleAnalyzePatterns({ groupBy: 'pattern' });
+
+      expect(result.content[0].text).toContain('Grouped by: pattern');
+    });
+
+    it('should format fixability grouping output correctly', async () => {
+      mockPatternAnalysisService.analyze = vi.fn(async () => ({
+        report: 'PATTERN ANALYSIS\n\nGrouped by: fixability\n\nEasy: 30 issues\nMedium: 20 issues\nHard: 5 issues'
+      }));
+
+      const result = await handleAnalyzePatterns({ groupBy: 'fixability' });
+
+      expect(result.content[0].text).toContain('Grouped by: fixability');
+      expect(result.content[0].text).toContain('Easy:');
+    });
+  });
+
+  describe('Edge cases', () => {
+    it('should handle includeCorrelations with empty correlations', async () => {
+      mockValidateInput.mockImplementation(() => ({
+        includeCorrelations: true
+      }));
+
+      mockPatternAnalysisService.analyze = vi.fn(async () => ({
+        report: 'PATTERN ANALYSIS\n\nCorrelations: None found'
+      }));
+
+      const result = await handleAnalyzePatterns({ includeCorrelations: true });
+
+      expect(result.content[0].text).toContain('Correlations: None found');
+    });
+
+    it('should handle includeImpact with time estimates', async () => {
+      mockValidateInput.mockImplementation(() => ({
+        includeImpact: true
+      }));
+
+      mockPatternAnalysisService.analyze = vi.fn(async () => ({
+        report: 'PATTERN ANALYSIS\n\nImpact:\n- Total effort: 4h 30m\n- Critical issues: 5'
+      }));
+
+      const result = await handleAnalyzePatterns({ includeImpact: true });
+
+      expect(result.content[0].text).toContain('Total effort:');
+    });
+
+    it('should handle combined includeCorrelations and includeImpact', async () => {
+      mockValidateInput.mockImplementation(() => ({
+        includeCorrelations: true,
+        includeImpact: true
+      }));
+
+      mockPatternAnalysisService.analyze = vi.fn(async () => ({
+        report: 'PATTERN ANALYSIS\n\nCorrelations: Found 3\nImpact: High'
+      }));
+
+      const result = await handleAnalyzePatterns({ includeCorrelations: true, includeImpact: true });
+
+      expect(result.content[0].text).toContain('Correlations:');
+      expect(result.content[0].text).toContain('Impact:');
+    });
+
+    it('should handle empty issues result', async () => {
+      mockPatternAnalysisService.analyze = vi.fn(async () => ({
+        report: 'PATTERN ANALYSIS\n\nNo issues found in this project.'
+      }));
+
+      const result = await handleAnalyzePatterns({});
+
+      expect(result.content[0].text).toContain('No issues found');
+    });
+
+    it('should handle all parameters combined', async () => {
+      mockValidateInput.mockImplementation(() => ({
+        groupBy: 'severity',
+        includeCorrelations: true,
+        includeImpact: true
+      }));
+
+      await handleAnalyzePatterns({
+        groupBy: 'severity',
+        includeCorrelations: true,
+        includeImpact: true
+      });
+
+      expect(mockPatternAnalysisService.analyze).toHaveBeenCalledWith(
+        {
+          groupBy: 'severity',
+          includeCorrelations: true,
+          includeImpact: true
+        },
+        undefined
+      );
+    });
+  });
+});
+
+describe('PatternAnalysisHandler (DI class)', () => {
+  let mockPatternAnalysisService: any;
+  let mockProjectManager: any;
+  let mockValidateInput: any;
+
+  beforeEach(async () => {
+    // Mock validateInput
+    const validators = await import('../../shared/validators/mcp-schemas');
+    mockValidateInput = vi.mocked(validators.validateInput);
+    mockValidateInput.mockImplementation(() => ({
+      groupBy: 'pattern',
+      includeImpact: false,
+      includeCorrelations: false
+    }));
+
+    // Mock PatternAnalysisService
+    const analysisModule = await import('../../core/analysis/index.js');
+    mockPatternAnalysisService = {
+      analyze: vi.fn(async () => ({
+        report: 'PATTERN ANALYSIS\n\nTop patterns:\n1. Rule A - 10 issues'
+      }))
+    };
+    vi.mocked(analysisModule.PatternAnalysisService).mockImplementation(function() { return mockPatternAnalysisService; });
+
+    // Mock dependencies
+    mockProjectManager = {};
+  });
+
+  it('should handle pattern analysis with default parameters', async () => {
+    const handler = new PatternAnalysisHandler(mockProjectManager);
+    const result = await handler.handle({});
+
+    expect(mockValidateInput).toHaveBeenCalled();
+    expect(mockPatternAnalysisService.analyze).toHaveBeenCalled();
+    expect(result.content[0].type).toBe('text');
+    expect(result.content[0].text).toContain('PATTERN ANALYSIS');
+  });
+
+  it('should handle groupBy pattern option', async () => {
+    mockValidateInput.mockImplementation(() => ({
+      groupBy: 'pattern',
+      includeImpact: false,
+      includeCorrelations: false
+    }));
+
+    const handler = new PatternAnalysisHandler(mockProjectManager);
+    await handler.handle({ groupBy: 'pattern' });
+
+    expect(mockPatternAnalysisService.analyze).toHaveBeenCalledWith(
+      expect.objectContaining({ groupBy: 'pattern' }),
+      undefined
+    );
+  });
+
+  it('should handle groupBy file option', async () => {
+    mockValidateInput.mockImplementation(() => ({
+      groupBy: 'file',
+      includeImpact: false,
+      includeCorrelations: false
+    }));
+
+    const handler = new PatternAnalysisHandler(mockProjectManager);
+    await handler.handle({ groupBy: 'file' });
+
+    expect(mockPatternAnalysisService.analyze).toHaveBeenCalledWith(
+      expect.objectContaining({ groupBy: 'file' }),
+      undefined
+    );
+  });
+
+  it('should handle groupBy severity option', async () => {
+    mockValidateInput.mockImplementation(() => ({
+      groupBy: 'severity',
+      includeImpact: false,
+      includeCorrelations: false
+    }));
+
+    const handler = new PatternAnalysisHandler(mockProjectManager);
+    await handler.handle({ groupBy: 'severity' });
+
+    expect(mockPatternAnalysisService.analyze).toHaveBeenCalledWith(
+      expect.objectContaining({ groupBy: 'severity' }),
+      undefined
+    );
+  });
+
+  it('should handle groupBy fixability option', async () => {
+    mockValidateInput.mockImplementation(() => ({
+      groupBy: 'fixability',
+      includeImpact: false,
+      includeCorrelations: false
+    }));
+
+    const handler = new PatternAnalysisHandler(mockProjectManager);
+    await handler.handle({ groupBy: 'fixability' });
+
+    expect(mockPatternAnalysisService.analyze).toHaveBeenCalledWith(
+      expect.objectContaining({ groupBy: 'fixability' }),
+      undefined
+    );
+  });
+
+  it('should handle includeImpact parameter', async () => {
+    mockValidateInput.mockImplementation(() => ({
+      groupBy: 'pattern',
+      includeImpact: true,
+      includeCorrelations: false
+    }));
+
+    const handler = new PatternAnalysisHandler(mockProjectManager);
+    await handler.handle({ includeImpact: true });
+
+    expect(mockPatternAnalysisService.analyze).toHaveBeenCalledWith(
+      expect.objectContaining({ includeImpact: true }),
+      undefined
+    );
+  });
+
+  it('should handle includeCorrelations parameter', async () => {
+    mockValidateInput.mockImplementation(() => ({
+      groupBy: 'pattern',
+      includeImpact: false,
+      includeCorrelations: true
+    }));
+
+    const handler = new PatternAnalysisHandler(mockProjectManager);
+    await handler.handle({ includeCorrelations: true });
+
+    expect(mockPatternAnalysisService.analyze).toHaveBeenCalledWith(
+      expect.objectContaining({ includeCorrelations: true }),
+      undefined
+    );
+  });
+
+  it('should pass correlation ID through', async () => {
+    const handler = new PatternAnalysisHandler(mockProjectManager);
+    await handler.handle({}, 'test-corr-pattern');
+
+    expect(mockPatternAnalysisService.analyze).toHaveBeenCalledWith(
+      expect.anything(),
+      'test-corr-pattern'
+    );
+  });
+
+  it('should propagate validation errors', async () => {
+    mockValidateInput.mockImplementation(() => {
+      throw new Error('DI Invalid groupBy');
+    });
+
+    const handler = new PatternAnalysisHandler(mockProjectManager);
+    await expect(handler.handle({})).rejects.toThrow('DI Invalid groupBy');
+  });
+
+  it('should propagate service errors', async () => {
+    mockPatternAnalysisService.analyze = vi.fn(async () => {
+      throw new Error('DI Pattern analysis failed');
+    });
+
+    const handler = new PatternAnalysisHandler(mockProjectManager);
+    await expect(handler.handle({})).rejects.toThrow('DI Pattern analysis failed');
   });
 });

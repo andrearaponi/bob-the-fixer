@@ -77,7 +77,7 @@ describe('Java Maven Libraries Resolution', () => {
           expect(path.isAbsolute(lib)).toBe(true);
         });
       }
-    });
+    }, 30000); // Increased timeout for Maven dependency resolution
 
     it('should filter out Maven [INFO] lines from classpath', async () => {
       // Arrange

@@ -3,8 +3,9 @@
  * Handles safe deletion of SonarQube projects
  */
 
-import { ProjectManager } from '../../universal/project-manager.js';
-import { SonarAdmin } from '../../universal/sonar-admin.js';
+import { injectable, inject } from 'tsyringe';
+import { IProjectManager, ISonarAdmin } from '../../infrastructure/interfaces/index.js';
+import { TOKENS } from '../../infrastructure/di/tokens.js';
 import { getLogger, StructuredLogger } from '../../shared/logger/structured-logger.js';
 import * as fs from 'fs/promises';
 import * as path from 'path';
@@ -14,12 +15,13 @@ export interface DeleteProjectOptions {
   confirm: boolean;
 }
 
+@injectable()
 export class ProjectDeletionService {
   private readonly logger: StructuredLogger;
 
   constructor(
-    private readonly projectManager: ProjectManager,
-    private readonly sonarAdmin: SonarAdmin
+    @inject(TOKENS.ProjectManager) private readonly projectManager: IProjectManager,
+    @inject(TOKENS.SonarAdmin) private readonly sonarAdmin: ISonarAdmin
   ) {
     this.logger = getLogger();
   }
@@ -94,12 +96,9 @@ export class ProjectDeletionService {
 
   private async fetchProjectDetails(projectKey: string): Promise<string> {
     try {
-      const projectResponse = await this.sonarAdmin.client.get('/api/projects/search', {
-        params: { projects: projectKey }
-      });
+      const project = await this.sonarAdmin.getProjectDetails(projectKey);
 
-      if (projectResponse.data.components?.length > 0) {
-        const project = projectResponse.data.components[0];
+      if (project) {
         return `PROJECT DETAILS:\n` +
                `Name: ${project.name}\n` +
                `Key: ${project.key}\n` +

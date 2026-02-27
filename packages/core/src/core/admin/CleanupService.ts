@@ -3,7 +3,9 @@
  * Handles cleanup of old projects and tokens
  */
 
-import { SonarAdmin } from '../../universal/sonar-admin.js';
+import { injectable, inject } from 'tsyringe';
+import { ISonarAdmin } from '../../infrastructure/interfaces/index.js';
+import { TOKENS } from '../../infrastructure/di/tokens.js';
 import { getLogger, StructuredLogger } from '../../shared/logger/structured-logger.js';
 
 export interface CleanupOptions {
@@ -16,10 +18,13 @@ export interface CleanupResult {
   deletedProjects: string[];
 }
 
+@injectable()
 export class CleanupService {
   private readonly logger: StructuredLogger;
 
-  constructor(private readonly sonarAdmin: SonarAdmin) {
+  constructor(
+    @inject(TOKENS.SonarAdmin) private readonly sonarAdmin: ISonarAdmin
+  ) {
     this.logger = getLogger();
   }
 

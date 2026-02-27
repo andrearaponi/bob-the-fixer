@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { handleCleanup } from './cleanup.handler';
+import { handleCleanup, CleanupHandler } from './cleanup.handler';
 
 // Mock all dependencies
 vi.mock('../../core/admin/index.js');
@@ -124,5 +124,135 @@ describe('handleCleanup', () => {
         undefined
       );
     });
+  });
+
+  describe('Edge cases', () => {
+    it('should handle olderThanDays of 0', async () => {
+      await handleCleanup({ olderThanDays: 0 });
+
+      expect(mockCleanupService.cleanup).toHaveBeenCalledWith(
+        expect.objectContaining({ olderThanDays: 0 }),
+        undefined
+      );
+    });
+
+    it('should handle very large olderThanDays value', async () => {
+      await handleCleanup({ olderThanDays: 365 });
+
+      expect(mockCleanupService.cleanup).toHaveBeenCalledWith(
+        expect.objectContaining({ olderThanDays: 365 }),
+        undefined
+      );
+    });
+
+    it('should handle empty cleanup results', async () => {
+      mockCleanupService.cleanup = vi.fn(async () =>
+        'CLEANUP REPORT\n\nProjects cleaned: 0\nOlder than: 30 days\nDry run: false'
+      );
+
+      const result = await handleCleanup({});
+
+      expect(result.content[0].text).toContain('Projects cleaned: 0');
+    });
+
+    it('should handle dryRun true with edge case values', async () => {
+      mockCleanupService.cleanup = vi.fn(async () =>
+        'CLEANUP REPORT\n\nWould clean: 10 projects\nDry run: true'
+      );
+
+      const result = await handleCleanup({ dryRun: true, olderThanDays: 1 });
+
+      expect(result.content[0].text).toContain('Dry run: true');
+    });
+
+    it('should handle combined dryRun and olderThanDays parameters', async () => {
+      await handleCleanup({ dryRun: true, olderThanDays: 7 });
+
+      expect(mockCleanupService.cleanup).toHaveBeenCalledWith(
+        { olderThanDays: 7, dryRun: true },
+        undefined
+      );
+    });
+
+    it('should handle cleanup with partial results', async () => {
+      mockCleanupService.cleanup = vi.fn(async () =>
+        'CLEANUP REPORT\n\nProjects cleaned: 2\nFailed: 1\nOlder than: 30 days'
+      );
+
+      const result = await handleCleanup({});
+
+      expect(result.content[0].text).toContain('Failed: 1');
+    });
+  });
+});
+
+describe('CleanupHandler (DI class)', () => {
+  let mockCleanupService: any;
+  let mockSonarAdmin: any;
+
+  beforeEach(async () => {
+    // Mock CleanupService
+    const admin = await import('../../core/admin/index.js');
+    mockCleanupService = {
+      cleanup: vi.fn(async () =>
+        'CLEANUP REPORT\n\nProjects cleaned: 3\nOlder than: 30 days\nDry run: false'
+      ),
+    };
+    vi.mocked(admin.CleanupService).mockImplementation(function() { return mockCleanupService; });
+
+    // Mock SonarAdmin
+    mockSonarAdmin = {};
+  });
+
+  it('should handle cleanup with default parameters', async () => {
+    const handler = new CleanupHandler(mockSonarAdmin);
+    const result = await handler.handle({});
+
+    expect(mockCleanupService.cleanup).toHaveBeenCalledWith(
+      { olderThanDays: 30, dryRun: false },
+      undefined
+    );
+    expect(result.content[0].type).toBe('text');
+    expect(result.content[0].text).toContain('CLEANUP REPORT');
+  });
+
+  it('should handle cleanup with custom parameters', async () => {
+    const handler = new CleanupHandler(mockSonarAdmin);
+    await handler.handle({ olderThanDays: 60, dryRun: true });
+
+    expect(mockCleanupService.cleanup).toHaveBeenCalledWith(
+      { olderThanDays: 60, dryRun: true },
+      undefined
+    );
+  });
+
+  it('should pass correlation ID through', async () => {
+    const handler = new CleanupHandler(mockSonarAdmin);
+    await handler.handle({}, 'test-corr-456');
+
+    expect(mockCleanupService.cleanup).toHaveBeenCalledWith(
+      expect.anything(),
+      'test-corr-456'
+    );
+  });
+
+  it('should propagate service errors', async () => {
+    mockCleanupService.cleanup = vi.fn(async () => {
+      throw new Error('DI Cleanup failed');
+    });
+
+    const handler = new CleanupHandler(mockSonarAdmin);
+    await expect(handler.handle({})).rejects.toThrow('DI Cleanup failed');
+  });
+
+  it('should handle dryRun mode', async () => {
+    mockCleanupService.cleanup = vi.fn(async () =>
+      'CLEANUP REPORT\n\nWould clean: 5 projects\nDry run: true'
+    );
+
+    const handler = new CleanupHandler(mockSonarAdmin);
+    const result = await handler.handle({ dryRun: true });
+
+    expect(result.content[0].text).toContain('Dry run: true');
   });
 });

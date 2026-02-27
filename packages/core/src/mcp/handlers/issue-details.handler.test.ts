@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { handleGetIssueDetails } from './issue-details.handler';
+import { handleGetIssueDetails, IssueDetailsHandler } from './issue-details.handler';
 
 // Mock all dependencies
 vi.mock('../../core/analysis/index.js');
@@ -218,5 +218,168 @@ describe('handleGetIssueDetails', () => {
 
       await expect(handleGetIssueDetails({})).rejects.toThrow('SonarQube API error');
     });
+  });
+});
+
+describe('IssueDetailsHandler (DI class)', () => {
+  let mockIssueAnalyzer: any;
+  let mockProjectManager: any;
+  let mockValidateInput: any;
+
+  beforeEach(async () => {
+    // Mock validateInput
+    const validators = await import('../../shared/validators/mcp-schemas');
+    mockValidateInput = vi.mocked(validators.validateInput);
+    mockValidateInput.mockImplementation(() => ({
+      issueKey: 'AX456',
+      contextLines: 10,
+      includeRuleDetails: true,
+      includeCodeExamples: true,
+      includeFilePath: true,
+      includeFileHeader: true,
+      headerMaxLines: 60,
+      includeDataFlow: 'auto',
+      maxFlows: 3,
+      maxFlowSteps: 12,
+      flowContextLines: 3,
+      includeSimilarFixed: false,
+      maxSimilarIssues: 3,
+      includeRelatedTests: false,
+      includeCoverageHints: undefined,
+      includeScmHints: false,
+    }));
+
+    // Mock IssueAnalyzer
+    const analysisModule = await import('../../core/analysis/index.js');
+    mockIssueAnalyzer = {
+      getIssueDetails: vi.fn(async () =>
+        'ISSUE DETAILS\n\nKey: AX456\nSeverity: CRITICAL\nType: VULNERABILITY'
+      )
+    };
+    vi.mocked(analysisModule.IssueAnalyzer).mockImplementation(function() { return mockIssueAnalyzer; });
+
+    // Mock dependencies
+    mockProjectManager = {};
+  });
+
+  it('should validate input and call IssueAnalyzer', async () => {
+    const handler = new IssueDetailsHandler(mockProjectManager);
+    const result = await handler.handle({ issueKey: 'AX456' });
+
+    expect(mockValidateInput).toHaveBeenCalled();
+    expect(mockIssueAnalyzer.getIssueDetails).toHaveBeenCalled();
+    expect(result.content[0].type).toBe('text');
+    expect(result.content[0].text).toContain('ISSUE DETAILS');
+  });
+
+  it('should pass correlation ID through', async () => {
+    const handler = new IssueDetailsHandler(mockProjectManager);
+    await handler.handle({ issueKey: 'AX456' }, 'test-corr-issue');
+
+    expect(mockIssueAnalyzer.getIssueDetails).toHaveBeenCalledWith(
+      expect.anything(),
+      'test-corr-issue'
+    );
+  });
+
+  it('should handle contextLines parameter', async () => {
+    mockValidateInput.mockImplementation(() => ({
+      issueKey: 'AX456',
+      contextLines: 15
+    }));
+
+    const handler = new IssueDetailsHandler(mockProjectManager);
+    await handler.handle({ issueKey: 'AX456', contextLines: 15 });
+
+    expect(mockIssueAnalyzer.getIssueDetails).toHaveBeenCalledWith(
+      expect.objectContaining({ contextLines: 15 }),
+      undefined
+    );
+  });
+
+  it('should handle includeDataFlow parameter', async () => {
+    mockValidateInput.mockImplementation(() => ({
+      issueKey: 'AX456',
+      includeDataFlow: true
+    }));
+
+    const handler = new IssueDetailsHandler(mockProjectManager);
+    await handler.handle({ issueKey: 'AX456', includeDataFlow: true });
+
+    expect(mockIssueAnalyzer.getIssueDetails).toHaveBeenCalledWith(
+      expect.objectContaining({ includeDataFlow: true }),
+      undefined
+    );
+  });
+
+  it('should handle includeSimilarFixed parameter', async () => {
+    mockValidateInput.mockImplementation(() => ({
+      issueKey: 'AX456',
+      includeSimilarFixed: true,
+      maxSimilarIssues: 5
+    }));
+
+    const handler = new IssueDetailsHandler(mockProjectManager);
+    await handler.handle({ issueKey: 'AX456', includeSimilarFixed: true, maxSimilarIssues: 5 });
+
+    expect(mockIssueAnalyzer.getIssueDetails).toHaveBeenCalledWith(
+      expect.objectContaining({
+        includeSimilarFixed: true,
+        maxSimilarIssues: 5
+      }),
+      undefined
+    );
+  });
+
+  it('should handle includeRelatedTests parameter', async () => {
+    mockValidateInput.mockImplementation(() => ({
+      issueKey: 'AX456',
+      includeRelatedTests: true,
+      includeCoverageHints: true
+    }));
+
+    const handler = new IssueDetailsHandler(mockProjectManager);
+    await handler.handle({ issueKey: 'AX456', includeRelatedTests: true, includeCoverageHints: true });
+
+    expect(mockIssueAnalyzer.getIssueDetails).toHaveBeenCalledWith(
+      expect.objectContaining({
+        includeRelatedTests: true,
+        includeCoverageHints: true
+      }),
+      undefined
+    );
+  });
+
+  it('should handle includeScmHints parameter', async () => {
+    mockValidateInput.mockImplementation(() => ({
+      issueKey: 'AX456',
+      includeScmHints: true
+    }));
+
+    const handler = new IssueDetailsHandler(mockProjectManager);
+    await handler.handle({ issueKey: 'AX456', includeScmHints: true });
+
+    expect(mockIssueAnalyzer.getIssueDetails).toHaveBeenCalledWith(
+      expect.objectContaining({ includeScmHints: true }),
+      undefined
+    );
+  });
+
+  it('should propagate validation errors', async () => {
+    mockValidateInput.mockImplementation(() => {
+      throw new Error('DI Invalid issue key');
+    });
+
+    const handler = new IssueDetailsHandler(mockProjectManager);
+    await expect(handler.handle({ issueKey: '' })).rejects.toThrow('DI Invalid issue key');
+  });
+
+  it('should propagate analyzer errors', async () => {
+    mockIssueAnalyzer.getIssueDetails = vi.fn(async () => {
+      throw new Error('DI Issue not found');
+    });
+
+    const handler = new IssueDetailsHandler(mockProjectManager);
+    await expect(handler.handle({ issueKey: 'AX999' })).rejects.toThrow('DI Issue not found');
   });
 });

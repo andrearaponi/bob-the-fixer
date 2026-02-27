@@ -1,10 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { handleLinkExistingProject } from './link-existing-project.handler';
+import { handleLinkExistingProject, LinkExistingProjectHandler } from './link-existing-project.handler';
 
 // Mock all dependencies
 vi.mock('../../shared/validators/mcp-schemas');
 vi.mock('../../infrastructure/security/input-sanitization');
 vi.mock('../../universal/sonar-admin');
+vi.mock('../../shared/logger/structured-logger');
 vi.mock('fs/promises');
 
 describe('handleLinkExistingProject', () => {
@@ -13,8 +14,17 @@ describe('handleLinkExistingProject', () => {
   let mockSanitizePath: any;
   let mockSonarAdmin: any;
   let mockFs: any;
+  let mockLogger: any;
 
   beforeEach(async () => {
+    // Mock logger
+    const loggerModule = await import('../../shared/logger/structured-logger');
+    mockLogger = {
+      info: vi.fn(),
+      error: vi.fn(),
+    };
+    vi.mocked(loggerModule.getLogger).mockImplementation(function() { return mockLogger; });
+
     // Mock validateInput
     const validators = await import('../../shared/validators/mcp-schemas');
     mockValidateInput = vi.mocked(validators.validateInput);
@@ -200,5 +210,277 @@ describe('handleLinkExistingProject', () => {
       expect(result.content[0].text).toContain('overwritten');
       expect(result.content[0].text).toContain('old-project');
     });
+  });
+});
+
+describe('LinkExistingProjectHandler (DI class)', () => {
+  let mockValidateInput: any;
+  let mockSanitizeUrl: any;
+  let mockSanitizePath: any;
+  let mockSonarAdmin: any;
+  let mockFs: any;
+  let mockLogger: any;
+
+  beforeEach(async () => {
+    // Mock logger
+    const loggerModule = await import('../../shared/logger/structured-logger');
+    mockLogger = {
+      info: vi.fn(),
+      error: vi.fn(),
+    };
+    vi.mocked(loggerModule.getLogger).mockImplementation(function() { return mockLogger; });
+
+    // Mock validateInput
+    const validators = await import('../../shared/validators/mcp-schemas');
+    mockValidateInput = vi.mocked(validators.validateInput);
+    mockValidateInput.mockImplementation(() => ({
+      sonarUrl: 'http://localhost:9000',
+      projectKey: 'existing-project',
+      token: 'test-token-12345678901234567890',
+      projectPath: undefined,
+    }));
+
+    // Mock sanitizeUrl and sanitizePath
+    const security = await import('../../infrastructure/security/input-sanitization');
+    mockSanitizeUrl = vi.mocked(security.sanitizeUrl);
+    mockSanitizeUrl.mockImplementation((url) => url);
+    mockSanitizePath = vi.mocked(security.sanitizePath);
+    mockSanitizePath.mockImplementation((path) => path);
+
+    // Mock SonarAdmin
+    const sonarAdmin = await import('../../universal/sonar-admin');
+    mockSonarAdmin = {
+      validateConnection: vi.fn(async () => true),
+      projectExists: vi.fn(async () => true),
+    };
+    vi.mocked(sonarAdmin.SonarAdmin).mockImplementation(function() { return mockSonarAdmin; });
+
+    // Mock fs/promises
+    mockFs = await import('fs/promises');
+    vi.mocked(mockFs.readFile).mockRejectedValue(new Error('ENOENT: no such file'));
+    vi.mocked(mockFs.writeFile).mockResolvedValue(undefined);
+  });
+
+  it('should handle linking existing project successfully', async () => {
+    const mockInjectedSonarAdmin = {};
+    const handler = new LinkExistingProjectHandler(mockInjectedSonarAdmin as any);
+
+    const result = await handler.handle({
+      sonarUrl: 'http://localhost:9000',
+      projectKey: 'existing-project',
+      token: 'test-token-12345678901234567890',
+    });
+
+    expect(mockValidateInput).toHaveBeenCalled();
+    expect(mockSonarAdmin.validateConnection).toHaveBeenCalled();
+    expect(mockSonarAdmin.projectExists).toHaveBeenCalled();
+    expect(result.content[0].type).toBe('text');
+    expect(result.content[0].text).toContain('Successfully linked');
+  });
+
+  it('should create config file', async () => {
+    const mockInjectedSonarAdmin = {};
+    const handler = new LinkExistingProjectHandler(mockInjectedSonarAdmin as any);
+
+    await handler.handle({
+      sonarUrl: 'http://localhost:9000',
+      projectKey: 'existing-project',
+      token: 'test-token-12345678901234567890',
+    });
+
+    expect(mockFs.writeFile).toHaveBeenCalled();
+    const writeCall = vi.mocked(mockFs.writeFile).mock.calls[0];
+    expect(writeCall[0]).toContain('bobthefixer.env');
+    expect(writeCall[1]).toContain('SONAR_PROJECT_KEY=existing-project');
+  });
+
+  it('should pass correlation ID through', async () => {
+    const mockInjectedSonarAdmin = {};
+    const handler = new LinkExistingProjectHandler(mockInjectedSonarAdmin as any);
+
+    await handler.handle({
+      sonarUrl: 'http://localhost:9000',
+      projectKey: 'existing-project',
+      token: 'test-token-12345678901234567890',
+    }, 'test-corr-link');
+
+    expect(mockLogger.info).toHaveBeenCalled();
+    expect(mockSonarAdmin.validateConnection).toHaveBeenCalled();
+  });
+
+  it('should throw error if connection fails', async () => {
+    mockSonarAdmin.validateConnection.mockRejectedValue(new Error('Connection failed'));
+
+    const mockInjectedSonarAdmin = {};
+    const handler = new LinkExistingProjectHandler(mockInjectedSonarAdmin as any);
+
+    await expect(handler.handle({
+      sonarUrl: 'http://localhost:9000',
+      projectKey: 'existing-project',
+      token: 'test-token-12345678901234567890',
+    })).rejects.toThrow('Cannot connect to SonarQube');
+  });
+
+  it('should throw error if authentication fails', async () => {
+    mockSonarAdmin.validateConnection.mockResolvedValue(false);
+
+    const mockInjectedSonarAdmin = {};
+    const handler = new LinkExistingProjectHandler(mockInjectedSonarAdmin as any);
+
+    await expect(handler.handle({
+      sonarUrl: 'http://localhost:9000',
+      projectKey: 'existing-project',
+      token: 'test-token-12345678901234567890',
+    })).rejects.toThrow('authentication failed');
+  });
+
+  it('should throw error if project does not exist', async () => {
+    mockSonarAdmin.projectExists.mockResolvedValue(false);
+
+    const mockInjectedSonarAdmin = {};
+    const handler = new LinkExistingProjectHandler(mockInjectedSonarAdmin as any);
+
+    await expect(handler.handle({
+      sonarUrl: 'http://localhost:9000',
+      projectKey: 'non-existent-project',
+      token: 'test-token-12345678901234567890',
+    })).rejects.toThrow('does not exist');
+  });
+
+  it('should handle custom project path', async () => {
+    mockValidateInput.mockImplementation(() => ({
+      sonarUrl: 'http://localhost:9000',
+      projectKey: 'existing-project',
+      token: 'test-token-12345678901234567890',
+      projectPath: '/custom/path',
+    }));
+
+    const mockInjectedSonarAdmin = {};
+    const handler = new LinkExistingProjectHandler(mockInjectedSonarAdmin as any);
+
+    await handler.handle({
+      sonarUrl: 'http://localhost:9000',
+      projectKey: 'existing-project',
+      token: 'test-token-12345678901234567890',
+      projectPath: '/custom/path',
+    });
+
+    expect(mockFs.writeFile).toHaveBeenCalled();
+    const writeCalls = vi.mocked(mockFs.writeFile).mock.calls;
+    const envFileCall = writeCalls.find(call => call[0].includes('bobthefixer.env'));
+    expect(envFileCall).toBeDefined();
+  });
+
+  it('should warn about existing config', async () => {
+    mockFs.readFile.mockResolvedValue('SONAR_PROJECT_KEY=old-project\n');
+
+    const mockInjectedSonarAdmin = {};
+    const handler = new LinkExistingProjectHandler(mockInjectedSonarAdmin as any);
+
+    const result = await handler.handle({
+      sonarUrl: 'http://localhost:9000',
+      projectKey: 'new-project',
+      token: 'test-token-12345678901234567890',
+    });
+
+    expect(result.content[0].text).toContain('overwritten');
+    expect(result.content[0].text).toContain('old-project');
+  });
+
+  it('should handle config file with comments and empty lines', async () => {
+    mockFs.readFile.mockResolvedValue('# Comment\n\nSOUNAR_PROJECT_KEY=old-project\n  \n');
+
+    const mockInjectedSonarAdmin = {};
+    const handler = new LinkExistingProjectHandler(mockInjectedSonarAdmin as any);
+
+    const result = await handler.handle({
+      sonarUrl: 'http://localhost:9000',
+      projectKey: 'existing-project',
+      token: 'test-token-12345678901234567890',
+    });
+
+    expect(result.content[0].text).toContain('Successfully linked');
+  });
+
+  it('should handle config file with malformed lines', async () => {
+    mockFs.readFile.mockResolvedValue('INVALID_LINE_NO_EQUALS\nKEY=\n=VALUE\n');
+
+    const mockInjectedSonarAdmin = {};
+    const handler = new LinkExistingProjectHandler(mockInjectedSonarAdmin as any);
+
+    const result = await handler.handle({
+      sonarUrl: 'http://localhost:9000',
+      projectKey: 'existing-project',
+      token: 'test-token-12345678901234567890',
+    });
+
+    expect(result.content[0].text).toContain('Successfully linked');
+  });
+
+  it('should handle values with equals signs', async () => {
+    mockFs.readFile.mockResolvedValue('SONAR_TOKEN=token=with=equals\n');
+
+    const mockInjectedSonarAdmin = {};
+    const handler = new LinkExistingProjectHandler(mockInjectedSonarAdmin as any);
+
+    const result = await handler.handle({
+      sonarUrl: 'http://localhost:9000',
+      projectKey: 'existing-project',
+      token: 'test-token-12345678901234567890',
+    });
+
+    expect(result.content[0].text).toContain('Successfully linked');
+  });
+
+  it('should handle gitignore that already contains entry', async () => {
+    // First call for config file (throws ENOENT), second call for gitignore (has entry)
+    let readCallCount = 0;
+    mockFs.readFile.mockImplementation(async (filePath: string) => {
+      readCallCount++;
+      if (filePath.includes('bobthefixer.env')) {
+        throw new Error('ENOENT: no such file');
+      }
+      if (filePath.includes('.gitignore')) {
+        return '# Existing gitignore\nbobthefixer.env\n';
+      }
+      throw new Error('ENOENT');
+    });
+
+    const mockInjectedSonarAdmin = {};
+    const handler = new LinkExistingProjectHandler(mockInjectedSonarAdmin as any);
+
+    const result = await handler.handle({
+      sonarUrl: 'http://localhost:9000',
+      projectKey: 'existing-project',
+      token: 'test-token-12345678901234567890',
+    });
+
+    // Should still succeed but not add duplicate entry
+    expect(result.content[0].text).toContain('Successfully linked');
+  });
+
+  it('should handle gitignore without trailing newline', async () => {
+    let readCallCount = 0;
+    mockFs.readFile.mockImplementation(async (filePath: string) => {
+      readCallCount++;
+      if (filePath.includes('bobthefixer.env')) {
+        throw new Error('ENOENT: no such file');
+      }
+      if (filePath.includes('.gitignore')) {
+        return '# Existing gitignore\nother-file'; // No trailing newline
+      }
+      throw new Error('ENOENT');
+    });
+
+    const mockInjectedSonarAdmin = {};
+    const handler = new LinkExistingProjectHandler(mockInjectedSonarAdmin as any);
+
+    const result = await handler.handle({
+      sonarUrl: 'http://localhost:9000',
+      projectKey: 'existing-project',
+      token: 'test-token-12345678901234567890',
+    });
+
+    expect(result.content[0].text).toContain('Successfully linked');
   });
 });

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { handleGenerateConfig } from './generate-config.handler';
+import { handleGenerateConfig, GenerateConfigHandler } from './generate-config.handler';
 import * as fs from 'fs/promises';
 
 // Mock dependencies
@@ -517,5 +517,301 @@ describe('handleGenerateConfig', () => {
 
       expect(tipIndex).toBeLessThan(scanIndex);
     });
+  });
+});
+
+describe('GenerateConfigHandler (DI class)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    // Mock file system
+    vi.mocked(fs.access).mockRejectedValue(new Error('Not found'));
+    vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+    vi.mocked(fs.readFile).mockRejectedValue(new Error('Not found'));
+    vi.mocked(fs.appendFile).mockResolvedValue(undefined);
+  });
+
+  it('should generate config with required fields', async () => {
+    const handler = new GenerateConfigHandler(mockProjectManager as any);
+    const result = await handler.handle({
+      config: { sources: 'src' }
+    });
+
+    expect(result.content[0].text).toContain('✅ sonar-project.properties generated successfully');
+  });
+
+  it('should use existing project key from bobthefixer.env', async () => {
+    const handler = new GenerateConfigHandler(mockProjectManager as any);
+    const result = await handler.handle({
+      config: { sources: 'src' }
+    });
+
+    expect(result.content[0].text).toContain('existing-project-key');
+  });
+
+  it('should include project key when provided', async () => {
+    const handler = new GenerateConfigHandler(mockProjectManager as any);
+    const result = await handler.handle({
+      config: {
+        projectKey: 'di-test-project',
+        sources: 'src'
+      }
+    });
+
+    expect(result.content[0].text).toContain('sonar.projectKey=di-test-project');
+  });
+
+  it('should warn when provided key differs from existing', async () => {
+    const handler = new GenerateConfigHandler(mockProjectManager as any);
+    const result = await handler.handle({
+      config: {
+        projectKey: 'different-key',
+        sources: 'src'
+      }
+    });
+
+    expect(result.content[0].text).toContain('⚠️');
+    expect(result.content[0].text).toContain('differs from configured key');
+  });
+
+  it('should include Java configuration', async () => {
+    const handler = new GenerateConfigHandler(mockProjectManager as any);
+    const result = await handler.handle({
+      config: {
+        sources: 'src/main/java',
+        javaBinaries: 'target/classes',
+        javaLibraries: 'lib/*.jar'
+      }
+    });
+
+    expect(result.content[0].text).toContain('sonar.java.binaries=target/classes');
+    expect(result.content[0].text).toContain('sonar.java.libraries=lib/*.jar');
+  });
+
+  it('should generate multi-module config', async () => {
+    const handler = new GenerateConfigHandler(mockProjectManager as any);
+    const result = await handler.handle({
+      config: {
+        sources: '.',
+        modules: [
+          { name: 'api', baseDir: 'api', sources: 'src/main/java' },
+          { name: 'web', baseDir: 'web', sources: 'src' }
+        ]
+      }
+    });
+
+    expect(result.content[0].text).toContain('sonar.modules=api,web');
+  });
+
+  it('should show auto-detection summary by default', async () => {
+    const handler = new GenerateConfigHandler(mockProjectManager as any);
+    const result = await handler.handle({});
+
+    expect(result.content[0].text).toContain('## Auto-Detection Summary');
+    expect(result.content[0].text).toContain('Languages: java (maven)');
+  });
+
+  it('should skip auto-detection when autoDetect is false', async () => {
+    const handler = new GenerateConfigHandler(mockProjectManager as any);
+    const result = await handler.handle({
+      autoDetect: false,
+      config: { sources: 'manual/src' }
+    });
+
+    expect(result.content[0].text).not.toContain('## Auto-Detection Summary');
+  });
+
+  it('should handle custom project path', async () => {
+    const handler = new GenerateConfigHandler(mockProjectManager as any);
+    const result = await handler.handle({
+      projectPath: '/custom/path',
+      config: { sources: 'src' }
+    });
+
+    expect(result.content[0].text).toContain('✅ sonar-project.properties generated successfully');
+  });
+
+  it('should generate default project key when no config exists', async () => {
+    mockProjectManager.getOrCreateConfig.mockRejectedValueOnce(new Error('No config'));
+
+    const handler = new GenerateConfigHandler(mockProjectManager as any);
+    const result = await handler.handle({
+      config: { sources: 'src' }
+    });
+
+    expect(result.content[0].text).toContain('⚠️');
+    expect(result.content[0].text).toContain('No project key provided');
+  });
+
+  it('should include exclusions in config', async () => {
+    const handler = new GenerateConfigHandler(mockProjectManager as any);
+    const result = await handler.handle({
+      config: {
+        sources: 'src',
+        exclusions: '**/test/**,**/node_modules/**'
+      }
+    });
+
+    expect(result.content[0].text).toContain('sonar.exclusions=**/test/**,**/node_modules/**');
+  });
+
+  it('should include coverage report paths', async () => {
+    const handler = new GenerateConfigHandler(mockProjectManager as any);
+    const result = await handler.handle({
+      config: {
+        sources: 'src',
+        coverageReportPaths: 'coverage/jacoco.xml'
+      }
+    });
+
+    expect(result.content[0].text).toContain('sonar.coverage.jacoco.xmlReportPaths=coverage/jacoco.xml');
+  });
+
+  it('should include additional properties', async () => {
+    const handler = new GenerateConfigHandler(mockProjectManager as any);
+    const result = await handler.handle({
+      config: {
+        sources: 'src',
+        additionalProperties: {
+          'sonar.custom.setting': 'value123'
+        }
+      }
+    });
+
+    expect(result.content[0].text).toContain('sonar.custom.setting=value123');
+  });
+
+  it('should track user overrides of detected values', async () => {
+    const handler = new GenerateConfigHandler(mockProjectManager as any);
+    const result = await handler.handle({
+      config: {
+        sources: 'custom/src'  // Override detected value
+      }
+    });
+
+    expect(result.content[0].text).toContain('User overrides applied:');
+  });
+
+  it('should include project name and version', async () => {
+    const handler = new GenerateConfigHandler(mockProjectManager as any);
+    const result = await handler.handle({
+      config: {
+        sources: 'src',
+        projectName: 'My Project',
+        projectVersion: '1.0.0'
+      }
+    });
+
+    expect(result.content[0].text).toContain('sonar.projectName=My Project');
+    expect(result.content[0].text).toContain('sonar.projectVersion=1.0.0');
+  });
+
+  it('should include module with tests and binaries', async () => {
+    const handler = new GenerateConfigHandler(mockProjectManager as any);
+    const result = await handler.handle({
+      config: {
+        sources: '.',
+        modules: [
+          {
+            name: 'core',
+            baseDir: 'core',
+            sources: 'src/main/java',
+            tests: 'src/test/java',
+            binaries: 'target/classes',
+            exclusions: '**/generated/**',
+            language: 'java'
+          }
+        ]
+      }
+    });
+
+    expect(result.content[0].text).toContain('core.sonar.sources=src/main/java');
+    expect(result.content[0].text).toContain('core.sonar.tests=src/test/java');
+  });
+
+  it('should handle tests configuration', async () => {
+    const handler = new GenerateConfigHandler(mockProjectManager as any);
+    const result = await handler.handle({
+      config: {
+        sources: 'src/main',
+        tests: 'src/test'
+      }
+    });
+
+    expect(result.content[0].text).toContain('sonar.tests=src/test');
+  });
+
+  it('should handle library path strategy', async () => {
+    const handler = new GenerateConfigHandler(mockProjectManager as any);
+    const result = await handler.handle({
+      libraryPathStrategy: 'absolute',
+      config: {
+        sources: 'src',
+        javaLibraries: '/absolute/path/lib.jar'
+      }
+    });
+
+    expect(result.content[0].text).toContain('sonar.java.libraries');
+  });
+});
+
+describe('handleGenerateConfig - additional branch coverage', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(fs.access).mockRejectedValue(new Error('Not found'));
+    vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+    vi.mocked(fs.readFile).mockRejectedValue(new Error('Not found'));
+    vi.mocked(fs.appendFile).mockResolvedValue(undefined);
+  });
+
+  it('should show truncated properties when more than 8 detected', async () => {
+    // Override the PreScanValidator mock for this test
+    const PreScanValidatorModule = await import('../../core/scanning/validation/PreScanValidator');
+    const manyProperties = Array.from({ length: 12 }, (_, i) => ({
+      key: `sonar.prop.${i}`,
+      value: `value${i}`,
+      confidence: 'high',
+      source: 'detected'
+    }));
+
+    vi.mocked(PreScanValidatorModule.PreScanValidator).mockImplementation(function() {
+      return {
+        validate: vi.fn().mockResolvedValue({
+          languages: [{ language: 'java' }],
+          detectedProperties: manyProperties,
+          missingCritical: [],
+          missingRecommended: [],
+          warnings: [],
+          scanQuality: 'full',
+          canProceed: true
+        })
+      } as any;
+    });
+
+    const result = await handleGenerateConfig({});
+
+    // Should show the truncated message
+    expect(result.content[0].text).toContain('(+4 more)');
+  });
+
+  it('should handle empty gitignore content without trailing newline', async () => {
+    vi.mocked(fs.access).mockImplementation(async (path: any) => {
+      if (path.includes('sonar-project.properties')) {
+        throw new Error('Not found');
+      }
+      return undefined;
+    });
+    vi.mocked(fs.readFile).mockImplementation(async (path: any) => {
+      if (path.includes('.gitignore')) {
+        return '';  // Empty gitignore
+      }
+      throw new Error('Not found');
+    });
+
+    const result = await handleGenerateConfig({
+      config: { sources: 'src' }
+    });
+
+    expect(result.content[0].text).toContain('✅ sonar-project.properties generated successfully');
   });
 });
