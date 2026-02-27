@@ -692,6 +692,43 @@ check_tree() {
     fi
 }
 
+# Check unzip (required for extracting sonar-scanner on Linux)
+check_unzip() {
+    print_step "Checking unzip..."
+
+    if ! command_exists unzip; then
+        print_warning "unzip not found!"
+        echo ""
+        echo "unzip is required to extract downloaded archives."
+        echo ""
+
+        if ask_yes_no "Do you want to install unzip?" "y"; then
+            case "$OS_TYPE" in
+                macos)
+                    brew install unzip
+                    ;;
+                linux)
+                    $(get_install_command) unzip
+                    ;;
+            esac
+
+            if command_exists unzip; then
+                print_success "unzip installed!"
+            else
+                print_error "unzip installation failed"
+                DEPENDENCIES_OK=false
+                return 1
+            fi
+        else
+            print_error "unzip is required to continue"
+            DEPENDENCIES_OK=false
+            return 1
+        fi
+    else
+        print_success "unzip - OK"
+    fi
+}
+
 # Check sonar-scanner (optional)
 check_sonar_scanner() {
     print_step "Checking sonar-scanner (optional)..."
@@ -754,6 +791,7 @@ check_all_dependencies() {
     check_curl
     check_openssl
     check_tree
+    check_unzip
 
     # Java and sonar-scanner are optional
     check_java || true  # Don't fail if Java is not installed
