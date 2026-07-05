@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { SonarQubeClient } from './client';
+import { SonarQubeClient, waitForCacheRefresh } from './client';
 import axios from 'axios';
 import * as fs from 'fs/promises';
 import {
@@ -150,6 +150,25 @@ describe('SonarQubeClient', () => {
         }),
       });
       expect(issues).toEqual(mockIssuesResponse.issues);
+    });
+
+    it('R1: caps pagination at the 10k window on huge projects without throwing', async () => {
+      const page = Array.from({ length: 500 }, (_, i) => ({ key: `I${i}` }));
+      const requestedPages: number[] = [];
+      mockAxiosInstance.get = vi.fn(async (url: string, cfg?: any) => {
+        if (url === '/api/issues/search') {
+          requestedPages.push(cfg?.params?.p);
+          return { data: { total: 15000, issues: page } };
+        }
+        return { data: { components: [] } }; // /api/projects/search analysis-date lookup
+      });
+
+      const issues = await client.getIssues();
+
+      // 10000 / 500 = 20 pages max; page 21+ (offset > 10000) must never be requested.
+      expect(Math.max(...requestedPages)).toBeLessThanOrEqual(20);
+      expect(requestedPages.length).toBe(20);
+      expect(issues.length).toBe(20 * 500);
     });
 
     it('should apply severity filter', async () => {
@@ -2029,6 +2048,81 @@ line5`;
 
       // No new API calls should be made (cache hit)
       expect(secondCallCount).toBe(firstCallCount);
+    });
+  });
+
+  describe('CE task polling and report-task (R2)', () => {
+    beforeEach(() => {
+      client = new SonarQubeClient('http://localhost:9000', 'test-token', 'test-project');
+    });
+
+    it('R2.AC1: polls the CE task by id when a ceTaskId is provided', async () => {
+      mockAxiosInstance.get = vi.fn(async () => ({
+        data: { task: { status: 'IN_PROGRESS', type: 'REPORT' } },
+      }));
+
+      const task = await (client as any).checkTaskStatus('AX-task-123');
+
+      expect(mockAxiosInstance.get).toHaveBeenCalledWith('/api/ce/task', {
+        params: { id: 'AX-task-123' },
+      });
+      expect(task.status).toBe('IN_PROGRESS');
+    });
+
+    it('R2.AC2: falls back to ce/activity when no ceTaskId is given', async () => {
+      mockAxiosInstance.get = vi.fn(async () => ({
+        data: { tasks: [{ status: 'SUCCESS', type: 'REPORT' }] },
+      }));
+
+      await (client as any).checkTaskStatus();
+
+      expect(mockAxiosInstance.get).toHaveBeenCalledWith(
+        '/api/ce/activity',
+        expect.objectContaining({ params: expect.objectContaining({ component: 'test-project' }) })
+      );
+    });
+
+    it('readCeTaskId parses ceTaskId from report-task.txt', async () => {
+      const fsp = await import('fs/promises');
+      vi.mocked(fsp.readFile).mockResolvedValueOnce(
+        'projectKey=p\nceTaskId=AX-abc-999\nserverUrl=http://x' as any
+      );
+
+      const id = await client.readCeTaskId('/repo');
+      expect(id).toBe('AX-abc-999');
+    });
+
+    it('R2.AC2: readCeTaskId returns null when report-task.txt is absent', async () => {
+      const fsp = await import('fs/promises');
+      vi.mocked(fsp.readFile).mockRejectedValue(
+        Object.assign(new Error('ENOENT'), { code: 'ENOENT' }) as any
+      );
+
+      const id = await client.readCeTaskId('/repo');
+      expect(id).toBeNull();
+    });
+  });
+
+  describe('waitForCacheRefresh (R3)', () => {
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => vi.useRealTimers());
+
+    it('R3.AC1: does not conclude "refreshed" on a stable count of zero', async () => {
+      const getIssues = vi.fn(async () => []); // always 0 (CE still indexing)
+      const p = waitForCacheRefresh({ getIssues });
+      await vi.advanceTimersByTimeAsync(16000); // past the 15s max wait
+      await p;
+      // It kept polling instead of returning after the 2nd stable-zero check.
+      expect(getIssues.mock.calls.length).toBeGreaterThan(3);
+    });
+
+    it('concludes refreshed on a stable non-zero count', async () => {
+      const getIssues = vi.fn(async () => [{ key: 'x' }]); // stable count of 1
+      const p = waitForCacheRefresh({ getIssues });
+      await vi.advanceTimersByTimeAsync(16000);
+      await p;
+      // Returned early (min wait + ~2 checks), not the full polling loop.
+      expect(getIssues.mock.calls.length).toBeLessThanOrEqual(3);
     });
   });
 });

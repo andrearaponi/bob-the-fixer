@@ -122,9 +122,8 @@ export const SonarGenerateReportSchema = z.object({
 });
 
 export const SonarConfigManagerSchema = z.object({
-  action: z.enum(['get', 'set', 'validate', 'reset']),
-  key: z.string().optional(),
-  value: z.string().optional()
+  action: z.enum(['view', 'validate', 'reset']),
+  showToken: z.boolean().optional()
 });
 
 export const SonarCleanupSchema = z.object({

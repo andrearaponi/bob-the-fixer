@@ -130,10 +130,20 @@ describe('handleConfigManager', () => {
   });
 
   describe('Error handling', () => {
-    it('should throw error for unknown action', async () => {
+    it('R4.AC3: returns a validation error for an unknown action', async () => {
       const args = { action: 'unknown' };
 
-      await expect(handleConfigManager(args)).rejects.toThrow('Unknown config action: unknown');
+      await expect(handleConfigManager(args)).rejects.toThrow(/validation failed/i);
+    });
+
+    it('R4.AC1/AC2: advertised actions match the validation schema', async () => {
+      const { toolDefinitions } = await import('../tool-definitions.js');
+      const { SonarConfigManagerSchema } = await import('../../shared/validators/mcp-schemas.js');
+      const tool = toolDefinitions.find((t: any) => t.name === 'sonar_config_manager') as any;
+      const advertised: string[] = tool.inputSchema.properties.action.enum;
+      const validated: string[] = (SonarConfigManagerSchema.shape.action as any).options;
+      expect([...advertised].sort()).toEqual([...validated].sort());
+      expect(advertised).not.toContain('update');
     });
 
     it('should propagate view errors', async () => {

@@ -9,6 +9,7 @@ import { ConfigManager, ConfigAction } from '../../core/project/index.js';
 import { IProjectManager } from '../../infrastructure/interfaces/index.js';
 import { MCPResponse } from '../../shared/types/index.js';
 import { ProjectManager } from '../../universal/project-manager.js';
+import { validateInput, SonarConfigManagerSchema } from '../../shared/validators/mcp-schemas.js';
 import { IHandler } from './IHandler.js';
 
 /**
@@ -30,7 +31,11 @@ export async function handleConfigManager(
   args: any,
   correlationId?: string
 ): Promise<MCPResponse> {
-  const { action, showToken = false } = args;
+  const { action, showToken = false } = validateInput(
+    SonarConfigManagerSchema,
+    args,
+    'sonar_config_manager'
+  );
 
   // Initialize dependencies (legacy approach)
   const projectManager = new ProjectManager();

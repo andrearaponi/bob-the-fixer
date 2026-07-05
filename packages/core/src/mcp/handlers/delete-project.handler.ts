@@ -11,6 +11,7 @@ import { MCPResponse } from '../../shared/types/index.js';
 import { sanitizeUrl } from '../../infrastructure/security/input-sanitization.js';
 import { ProjectManager } from '../../universal/project-manager.js';
 import { SonarAdmin } from '../../universal/sonar-admin.js';
+import { validateInput, SonarDeleteProjectSchema } from '../../shared/validators/mcp-schemas.js';
 import { IHandler } from './IHandler.js';
 
 /**
@@ -33,7 +34,12 @@ export async function handleDeleteProject(
   correlationId?: string
 ): Promise<MCPResponse> {
   try {
-    const { projectKey, confirm } = args;
+    // Validate input and enforce the confirmation guard before deleting.
+    const { projectKey, confirm } = validateInput(
+      SonarDeleteProjectSchema,
+      args,
+      'sonar_delete_project'
+    );
 
     // Initialize dependencies (legacy approach)
     const projectManager = new ProjectManager();
@@ -62,6 +68,7 @@ export async function handleDeleteProject(
           text: `PROJECT DELETION ERROR\n\n${error.message}\n\nThe project could not be deleted. Check your permissions and try again.`,
         },
       ],
+      isError: true,
     };
   }
 }

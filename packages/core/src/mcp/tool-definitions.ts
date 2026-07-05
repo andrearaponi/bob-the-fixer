@@ -187,7 +187,7 @@ export const toolDefinitions = [
       properties: {
         action: {
           type: 'string' as const,
-          enum: ['view', 'validate', 'reset', 'update'],
+          enum: ['view', 'validate', 'reset'],
           description: 'Action to perform on configuration'
         },
         showToken: {

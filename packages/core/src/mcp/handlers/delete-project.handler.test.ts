@@ -48,7 +48,7 @@ describe('handleDeleteProject', () => {
 
     it('should pass correlation ID through', async () => {
       const correlationId = 'test-corr-123';
-      await handleDeleteProject({ projectKey: 'test-project' }, correlationId);
+      await handleDeleteProject({ projectKey: 'test-project', confirm: true }, correlationId);
 
       expect(mockProjectDeletionService.deleteProject).toHaveBeenCalledWith(
         expect.anything(),
@@ -57,20 +57,20 @@ describe('handleDeleteProject', () => {
     });
 
     it('should sanitize SONAR_URL from environment', async () => {
-      await handleDeleteProject({ projectKey: 'test-project' });
+      await handleDeleteProject({ projectKey: 'test-project', confirm: true });
 
       expect(mockSanitizeUrl).toHaveBeenCalledWith('http://localhost:9000');
     });
 
     it('should use default SONAR_URL when not set', async () => {
       delete process.env.SONAR_URL;
-      await handleDeleteProject({ projectKey: 'test-project' });
+      await handleDeleteProject({ projectKey: 'test-project', confirm: true });
 
       expect(mockSanitizeUrl).toHaveBeenCalledWith('http://localhost:9000');
     });
 
     it('should format result as text', async () => {
-      const result = await handleDeleteProject({ projectKey: 'test-project' });
+      const result = await handleDeleteProject({ projectKey: 'test-project', confirm: true });
 
       expect(result.content[0].text).toContain('PROJECT DELETED');
       expect(result.content[0].text).toContain('test-project');
@@ -83,8 +83,9 @@ describe('handleDeleteProject', () => {
         throw new Error('Project not found');
       });
 
-      const result = await handleDeleteProject({ projectKey: 'missing-project' });
+      const result = await handleDeleteProject({ projectKey: 'missing-project', confirm: true });
 
+      expect(result.isError).toBe(true); // R5.AC1: failure reported, not a normal result
       expect(result.content[0].text).toContain('PROJECT DELETION ERROR');
       expect(result.content[0].text).toContain('Project not found');
       expect(result.content[0].text).toContain('could not be deleted');
@@ -96,14 +97,14 @@ describe('handleDeleteProject', () => {
       });
 
       await expect(
-        handleDeleteProject({ projectKey: 'test-project' })
+        handleDeleteProject({ projectKey: 'test-project', confirm: true })
       ).resolves.toHaveProperty('content');
     });
   });
 
   describe('Parameter handling', () => {
     it('should handle projectKey parameter', async () => {
-      await handleDeleteProject({ projectKey: 'my-project' });
+      await handleDeleteProject({ projectKey: 'my-project', confirm: true });
 
       expect(mockProjectDeletionService.deleteProject).toHaveBeenCalledWith(
         expect.objectContaining({ projectKey: 'my-project' }),
@@ -120,13 +121,11 @@ describe('handleDeleteProject', () => {
       );
     });
 
-    it('should handle confirm false', async () => {
-      await handleDeleteProject({ projectKey: 'test-project', confirm: false });
+    it('R5.AC2: rejects deletion when confirm is false and does not delete', async () => {
+      const result = await handleDeleteProject({ projectKey: 'test-project', confirm: false });
 
-      expect(mockProjectDeletionService.deleteProject).toHaveBeenCalledWith(
-        expect.objectContaining({ confirm: false }),
-        undefined
-      );
+      expect(result.isError).toBe(true);
+      expect(mockProjectDeletionService.deleteProject).not.toHaveBeenCalled();
     });
   });
 });

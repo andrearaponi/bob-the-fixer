@@ -414,7 +414,9 @@ export class ScanOrchestrator {
     console.error('✅ Analysis triggered successfully');
 
     console.error('⏳ Waiting for analysis to complete...');
-    await sonarClient.waitForAnalysis();
+    // Poll the analysis's own CE task (from report-task.txt) when available.
+    const ceTaskId = await sonarClient.readCeTaskId(this.projectManager.getWorkingDirectory());
+    await sonarClient.waitForAnalysis(60000, ceTaskId ?? undefined);
     console.error('✅ Analysis completed successfully');
 
     console.error('⏳ Waiting for issue cache refresh...');

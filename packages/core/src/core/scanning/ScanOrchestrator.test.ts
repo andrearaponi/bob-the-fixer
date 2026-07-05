@@ -19,6 +19,7 @@ const mockSonarClient = {
   triggerAnalysis: vi.fn(() => Promise.resolve()),
   triggerDotnetAnalysis: vi.fn(() => Promise.resolve()),
   waitForAnalysis: vi.fn(() => Promise.resolve()),
+  readCeTaskId: vi.fn(() => Promise.resolve(null)),
   getIssues: vi.fn(() => Promise.resolve([])),
   getSecurityHotspots: vi.fn(async () => []),
   getProjectMetrics: vi.fn(async () => ({})),

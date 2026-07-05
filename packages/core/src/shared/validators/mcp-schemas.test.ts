@@ -310,7 +310,7 @@ describe('SonarGenerateReportSchema', () => {
 
 describe('SonarConfigManagerSchema', () => {
   it('should accept valid actions', () => {
-    const actions = ['get', 'set', 'validate', 'reset'];
+    const actions = ['view', 'validate', 'reset'];
 
     actions.forEach((action) => {
       const result = SonarConfigManagerSchema.parse({ action });
@@ -320,17 +320,13 @@ describe('SonarConfigManagerSchema', () => {
 
   it('should reject invalid action', () => {
     expect(() => SonarConfigManagerSchema.parse({ action: 'invalid' })).toThrow();
+    // Legacy/unimplemented actions must also be rejected now.
+    expect(() => SonarConfigManagerSchema.parse({ action: 'update' })).toThrow();
   });
 
-  it('should accept optional key and value', () => {
-    const result = SonarConfigManagerSchema.parse({
-      action: 'set',
-      key: 'sonarUrl',
-      value: 'http://localhost:9000',
-    });
-
-    expect(result.key).toBe('sonarUrl');
-    expect(result.value).toBe('http://localhost:9000');
+  it('should accept optional showToken', () => {
+    const result = SonarConfigManagerSchema.parse({ action: 'view', showToken: true });
+    expect(result.showToken).toBe(true);
   });
 });
 

@@ -714,22 +714,31 @@ export class SonarQubeClient {
 
       console.error(`Found ${total} total issues (fetched page 1/${Math.ceil(total / PAGE_SIZE)})`);
 
-      // Calculate remaining pages
+      // Calculate remaining pages, capped at SonarQube's p*ps <= 10000 window.
+      // Requesting pages past that window returns HTTP 400, which would reject
+      // the whole parallel fetch on large projects.
+      const MAX_PAGE = Math.floor(10000 / PAGE_SIZE);
       const totalPages = Math.ceil(total / PAGE_SIZE);
+      const lastPage = Math.min(totalPages, MAX_PAGE);
+      if (totalPages > MAX_PAGE) {
+        console.error(
+          `⚠️ Result set truncated: ${total} issues exceed SonarQube's 10000-result window; fetching the first ${MAX_PAGE * PAGE_SIZE}.`
+        );
+      }
 
-      // Fetch remaining pages if needed
-      if (totalPages > 1) {
-        console.error(`Fetching ${totalPages - 1} additional pages...`);
+      // Fetch remaining pages if needed (within the window)
+      if (lastPage > 1) {
+        console.error(`Fetching ${lastPage - 1} additional pages...`);
 
-        // Create array of page numbers [2, 3, 4, ...]
-        const remainingPages = Array.from({ length: totalPages - 1 }, (_, i) => i + 2);
+        // Create array of page numbers [2, 3, ..., lastPage]
+        const remainingPages = Array.from({ length: lastPage - 1 }, (_, i) => i + 2);
 
         // Fetch all remaining pages in parallel for better performance
         const pagePromises = remainingPages.map(pageNum =>
           this.client.get('/api/issues/search', {
             params: { ...baseParams, p: pageNum }
           }).then(response => {
-            console.error(`Fetched page ${pageNum}/${totalPages}`);
+            console.error(`Fetched page ${pageNum}/${lastPage}`);
             return response.data.issues ?? [];
           })
         );
@@ -912,13 +921,13 @@ export class SonarQubeClient {
     return lines;
   }
 
-  async waitForAnalysis(timeout: number = 60000): Promise<void> {
+  async waitForAnalysis(timeout: number = 60000, ceTaskId?: string): Promise<void> {
     const startTime = Date.now();
     console.error(`Waiting for analysis completion (timeout: ${timeout}ms)...`);
 
     while (Date.now() - startTime < timeout) {
       try {
-        const task = await this.checkTaskStatus();
+        const task = await this.checkTaskStatus(ceTaskId);
         if (!task) {
           await this.sleep(2000);
           continue;
@@ -936,8 +945,23 @@ export class SonarQubeClient {
     throw new Error(`Analysis timeout after ${timeout}ms`);
   }
 
-  private async checkTaskStatus(): Promise<any> {
+  private async checkTaskStatus(ceTaskId?: string): Promise<any> {
     console.error('Checking analysis status...');
+
+    // Prefer the analysis's own CE task by id (from report-task.txt), so we do
+    // not read the status of a different/previous task on a shared project.
+    if (ceTaskId) {
+      const response = await this.client.get('/api/ce/task', { params: { id: ceTaskId } });
+      const task = response.data.task;
+      if (!task) {
+        console.error('Task not found by id, waiting...');
+        return null;
+      }
+      console.error(`Task status: ${task.status}, type: ${task.type}`);
+      return task;
+    }
+
+    // Fallback: latest task for the project.
     const response = await this.client.get('/api/ce/activity', {
       params: { component: this.projectKey, ps: 1 }
     });
@@ -950,6 +974,28 @@ export class SonarQubeClient {
 
     console.error(`Task status: ${task.status}, type: ${task.type}`);
     return task;
+  }
+
+  /**
+   * Read the Compute Engine task id from the scanner's report-task.txt, so the
+   * analysis can be polled by its own task id. Returns null if not found.
+   */
+  async readCeTaskId(projectPath: string): Promise<string | null> {
+    const candidates = [
+      path.join(projectPath, '.scannerwork', 'report-task.txt'),
+      path.join(projectPath, 'target', 'sonar', 'report-task.txt'),
+      path.join(projectPath, 'build', 'sonar', 'report-task.txt'),
+    ];
+    for (const file of candidates) {
+      try {
+        const content = await fs.readFile(file, 'utf8');
+        const match = content.match(/^ceTaskId=(.+)$/m);
+        if (match) return match[1].trim();
+      } catch {
+        // try next candidate location
+      }
+    }
+    return null;
   }
 
   private async handleTaskStatus(task: any): Promise<boolean> {
@@ -2088,8 +2134,10 @@ export async function waitForCacheRefresh(sonarClient: any): Promise<void> {
       
       console.error(`📊 Current issue count: ${currentCount} (previous: ${previousIssueCount})`);
       
-      // If we have a stable issue count (not changing), cache is likely refreshed
-      if (previousIssueCount >= 0 && currentCount === previousIssueCount) {
+      // A stable NON-ZERO count means indexing has settled. A stable count of
+      // zero can just be the Compute Engine still indexing, so it must not be
+      // mistaken for a clean scan (would return an empty result prematurely).
+      if (previousIssueCount >= 0 && currentCount === previousIssueCount && currentCount > 0) {
         console.error('✅ Issue count stable, cache refreshed');
         return;
       }
