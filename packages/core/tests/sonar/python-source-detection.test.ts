@@ -1,18 +1,14 @@
 import { describe, it, expect, beforeAll, beforeEach, afterEach } from 'vitest';
-import { SonarQubeClient } from '../../src/sonar/client.js';
+import { ScannerParameterBuilder } from '../../src/sonar/scanner/ScannerParameterBuilder.js';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 
 describe('Python Source Detection', () => {
   const fixtureBaseDir = path.join(__dirname, 'fixtures', 'python-sources');
-  let client: SonarQubeClient;
+  let client: ScannerParameterBuilder;
 
   beforeAll(() => {
-    client = new SonarQubeClient(
-      'http://localhost:9000',
-      'test-token',
-      'test-project'
-    );
+    client = new ScannerParameterBuilder();
   });
 
   beforeEach(async () => {

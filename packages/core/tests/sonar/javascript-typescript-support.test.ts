@@ -1,18 +1,14 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { SonarQubeClient } from '../../src/sonar/client.js';
+import { ScannerParameterBuilder } from '../../src/sonar/scanner/ScannerParameterBuilder.js';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 
 describe('JavaScript/TypeScript Support', () => {
   const fixtureDir = path.join(__dirname, 'fixtures', 'javascript');
-  let client: SonarQubeClient;
+  let client: ScannerParameterBuilder;
 
   beforeAll(() => {
-    client = new SonarQubeClient(
-      'http://localhost:9000',
-      'test-token',
-      'test-project'
-    );
+    client = new ScannerParameterBuilder();
   });
 
   describe('detectTsConfig', () => {
@@ -241,7 +237,7 @@ describe('JavaScript/TypeScript Support', () => {
   describe('integration with buildLanguageSpecificParams', () => {
     it('should build full scanner parameters for JavaScript/TypeScript project', async () => {
       // Arrange
-      const buildLanguageSpecificParams = (client as any).buildLanguageSpecificParams?.bind(client);
+      const buildLanguageSpecificParams = (client as any).build?.bind(client);
 
       if (!buildLanguageSpecificParams) {
         expect(buildLanguageSpecificParams).toBeDefined();
@@ -254,7 +250,7 @@ describe('JavaScript/TypeScript Support', () => {
       };
 
       // Act
-      const params = await buildLanguageSpecificParams(fixtureDir);
+      const params = await buildLanguageSpecificParams(fixtureDir, []);
 
       // Assert
       const sourcesParam = params.find((p: string) => p.startsWith('-Dsonar.sources='));

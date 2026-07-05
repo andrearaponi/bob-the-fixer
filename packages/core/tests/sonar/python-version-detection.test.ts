@@ -1,18 +1,14 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { SonarQubeClient } from '../../src/sonar/client.js';
+import { ScannerParameterBuilder } from '../../src/sonar/scanner/ScannerParameterBuilder.js';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 
 describe('Python Version Detection', () => {
   const fixtureDir = path.join(__dirname, 'fixtures', 'python');
-  let client: SonarQubeClient;
+  let client: ScannerParameterBuilder;
 
   beforeAll(() => {
-    client = new SonarQubeClient(
-      'http://localhost:9000',
-      'test-token',
-      'test-project'
-    );
+    client = new ScannerParameterBuilder();
   });
 
   describe('detectPythonVersionFromPyproject', () => {
@@ -257,7 +253,7 @@ describe('Python Version Detection', () => {
   describe('integration with buildLanguageSpecificParams', () => {
     it('should include Python version in final scanner parameters', async () => {
       // Arrange
-      const buildLanguageSpecificParams = (client as any).buildLanguageSpecificParams?.bind(client);
+      const buildLanguageSpecificParams = (client as any).build?.bind(client);
 
       if (!buildLanguageSpecificParams) {
         expect(buildLanguageSpecificParams).toBeDefined();
@@ -270,7 +266,7 @@ describe('Python Version Detection', () => {
       };
 
       // Act
-      const params = await buildLanguageSpecificParams(fixtureDir);
+      const params = await buildLanguageSpecificParams(fixtureDir, []);
 
       // Assert - should have Python-specific parameters
       const sourcesParam = params.find((p: string) => p.startsWith('-Dsonar.sources='));

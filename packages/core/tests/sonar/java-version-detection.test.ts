@@ -1,18 +1,14 @@
 import { describe, it, expect, beforeAll, vi, afterEach } from 'vitest';
-import { SonarQubeClient } from '../../src/sonar/client.js';
+import { ScannerParameterBuilder } from '../../src/sonar/scanner/ScannerParameterBuilder.js';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 
 describe('Java Version Detection', () => {
   const fixtureDir = path.join(__dirname, 'fixtures', 'java-maven');
-  let client: SonarQubeClient;
+  let client: ScannerParameterBuilder;
 
   beforeAll(() => {
-    client = new SonarQubeClient(
-      'http://localhost:9000',
-      'test-token',
-      'test-project'
-    );
+    client = new ScannerParameterBuilder();
   });
 
   describe('detectJavaVersionFromPom', () => {
@@ -124,7 +120,7 @@ describe('Java Version Detection', () => {
         (client as any).addMavenLibraries = vi.fn().mockResolvedValue(undefined);
       }
 
-      const buildLanguageSpecificParams = (client as any).buildLanguageSpecificParams?.bind(client);
+      const buildLanguageSpecificParams = (client as any).build?.bind(client);
 
       if (!buildLanguageSpecificParams) {
         expect(buildLanguageSpecificParams).toBeDefined();
@@ -137,7 +133,7 @@ describe('Java Version Detection', () => {
       };
 
       // Act
-      const params = await buildLanguageSpecificParams(fixtureDir);
+      const params = await buildLanguageSpecificParams(fixtureDir, []);
 
       // Assert
       const versionParam = params.find((p: string) => p.startsWith('-Dsonar.java.source='));

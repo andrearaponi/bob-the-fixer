@@ -1,18 +1,14 @@
 import { describe, it, expect, beforeAll, vi } from 'vitest';
-import { SonarQubeClient } from '../../src/sonar/client.js';
+import { ScannerParameterBuilder } from '../../src/sonar/scanner/ScannerParameterBuilder.js';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 
 describe('Go Language Support', () => {
   const fixtureDir = path.join(__dirname, 'fixtures', 'go');
-  let client: SonarQubeClient;
+  let client: ScannerParameterBuilder;
 
   beforeAll(() => {
-    client = new SonarQubeClient(
-      'http://localhost:9000',
-      'test-token',
-      'test-project'
-    );
+    client = new ScannerParameterBuilder();
   });
 
   describe('Go project detection', () => {
@@ -176,7 +172,7 @@ describe('Go Language Support', () => {
   describe('integration with buildLanguageSpecificParams', () => {
     it('should build full scanner parameters for Go project', async () => {
       // Arrange
-      const buildLanguageSpecificParams = (client as any).buildLanguageSpecificParams?.bind(client);
+      const buildLanguageSpecificParams = (client as any).build?.bind(client);
 
       if (!buildLanguageSpecificParams) {
         expect(buildLanguageSpecificParams).toBeDefined();
@@ -189,7 +185,7 @@ describe('Go Language Support', () => {
       };
 
       // Act
-      const params = await buildLanguageSpecificParams(fixtureDir);
+      const params = await buildLanguageSpecificParams(fixtureDir, []);
 
       // Assert
       expect(params).toContain('-Dsonar.sources=.');

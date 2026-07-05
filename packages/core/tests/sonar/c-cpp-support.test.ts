@@ -1,19 +1,15 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { SonarQubeClient } from '../../src/sonar/client.js';
+import { ScannerParameterBuilder } from '../../src/sonar/scanner/ScannerParameterBuilder.js';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 
 describe('C/C++ Language Support', () => {
   const cFixtureDir = path.join(__dirname, 'fixtures', 'c');
   const cppFixtureDir = path.join(__dirname, 'fixtures', 'cpp');
-  let client: SonarQubeClient;
+  let client: ScannerParameterBuilder;
 
   beforeAll(() => {
-    client = new SonarQubeClient(
-      'http://localhost:9000',
-      'test-token',
-      'test-project'
-    );
+    client = new ScannerParameterBuilder();
   });
 
   describe('C project detection', () => {
@@ -350,7 +346,7 @@ describe('C/C++ Language Support', () => {
   describe('integration with buildLanguageSpecificParams', () => {
     it('should build full scanner parameters for C project', async () => {
       // Arrange
-      const buildLanguageSpecificParams = (client as any).buildLanguageSpecificParams?.bind(client);
+      const buildLanguageSpecificParams = (client as any).build?.bind(client);
 
       if (!buildLanguageSpecificParams) {
         expect(buildLanguageSpecificParams).toBeDefined();
@@ -363,7 +359,7 @@ describe('C/C++ Language Support', () => {
       };
 
       // Act
-      const params = await buildLanguageSpecificParams(cFixtureDir);
+      const params = await buildLanguageSpecificParams(cFixtureDir, []);
 
       // Assert
       const sourcesParam = params.find((p: string) => p.startsWith('-Dsonar.sources='));
@@ -379,7 +375,7 @@ describe('C/C++ Language Support', () => {
 
     it('should build full scanner parameters for C++ project', async () => {
       // Arrange
-      const buildLanguageSpecificParams = (client as any).buildLanguageSpecificParams?.bind(client);
+      const buildLanguageSpecificParams = (client as any).build?.bind(client);
 
       if (!buildLanguageSpecificParams) {
         expect(buildLanguageSpecificParams).toBeDefined();
@@ -392,7 +388,7 @@ describe('C/C++ Language Support', () => {
       };
 
       // Act
-      const params = await buildLanguageSpecificParams(cppFixtureDir);
+      const params = await buildLanguageSpecificParams(cppFixtureDir, []);
 
       // Assert
       const sourcesParam = params.find((p: string) => p.startsWith('-Dsonar.sources='));

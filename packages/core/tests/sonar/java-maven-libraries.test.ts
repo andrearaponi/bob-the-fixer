@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { SonarQubeClient } from '../../src/sonar/client.js';
+import { ScannerParameterBuilder } from '../../src/sonar/scanner/ScannerParameterBuilder.js';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as path from 'path';
@@ -9,15 +9,11 @@ const execAsync = promisify(exec);
 
 describe('Java Maven Libraries Resolution', () => {
   const fixtureDir = path.join(__dirname, 'fixtures', 'java-maven');
-  let client: SonarQubeClient;
+  let client: ScannerParameterBuilder;
 
   beforeAll(() => {
     // Create a test client (we won't actually connect to SonarQube)
-    client = new SonarQubeClient(
-      'http://localhost:9000',
-      'test-token',
-      'test-project'
-    );
+    client = new ScannerParameterBuilder();
   });
 
   describe('addMavenLibraries', () => {
@@ -126,7 +122,7 @@ describe('Java Maven Libraries Resolution', () => {
   describe('Maven integration test', () => {
     it('should build full scanner parameters for Maven project', async () => {
       // Arrange
-      const buildLanguageSpecificParams = (client as any).buildLanguageSpecificParams.bind(client);
+      const buildLanguageSpecificParams = (client as any).build.bind(client);
 
       // Mock project context
       (client as any).projectContext = {
@@ -135,7 +131,7 @@ describe('Java Maven Libraries Resolution', () => {
       };
 
       // Act
-      const params = await buildLanguageSpecificParams(fixtureDir);
+      const params = await buildLanguageSpecificParams(fixtureDir, []);
 
       // Assert
       expect(params).toContain('-Dsonar.sources=src/main/java');
