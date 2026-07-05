@@ -11,12 +11,14 @@ vi.mock('./handlers/scan.handler.js', () => ({
 import { routeTool, toolExists, getAvailableTools, toolRoutes } from './ToolRouter.js';
 
 describe('ToolRouter (single wiring table)', () => {
-  it('exposes exactly the registered tools and includes sonar_scan_project', () => {
+  it('exposes exactly the registered tools including the sonar and trivy tools', () => {
     const tools = getAvailableTools();
     expect(tools).toContain('sonar_scan_project');
+    expect(tools).toContain('trivy_scan_dependencies');
+    expect(tools).toContain('trivy_check_installation');
     expect(tools).toHaveLength(Object.keys(toolRoutes).length);
-    // The public surface is 21 MCP tools.
-    expect(tools).toHaveLength(21);
+    // 21 sonar tools + 2 trivy (SCA) tools.
+    expect(tools).toHaveLength(23);
   });
 
   it('reports tool existence', () => {

@@ -482,5 +482,26 @@ export const toolDefinitions = [
       },
       required: ['config']
     }
+  },
+  {
+    name: 'trivy_scan_dependencies',
+    description: '[EN] Scan project dependencies for known vulnerabilities (SCA) using Trivy. Returns fix-ready findings: package, installed -> fixed version, severity and CVE. Run trivy_check_installation first if unsure Trivy is installed.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        projectPath: {
+          type: 'string' as const,
+          description: 'Path to the project to scan (defaults to current working directory)'
+        }
+      }
+    }
+  },
+  {
+    name: 'trivy_check_installation',
+    description: '[EN] Check whether Trivy is installed and available on PATH and report its version. Use this before trivy_scan_dependencies if a scan fails.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {}
+    }
   }
 ];

@@ -27,6 +27,8 @@ import { handleLinkExistingProject } from './handlers/link-existing-project.hand
 import { handleGetCoverageGaps } from './handlers/coverage-gaps.handler.js';
 import { handleGetUncoveredFiles } from './handlers/uncovered-files.handler.js';
 import { handleGenerateConfig } from './handlers/generate-config.handler.js';
+import { handleTrivyScanDependencies } from './handlers/trivy-scan.handler.js';
+import { handleTrivyCheckInstallation } from './handlers/trivy-check.handler.js';
 
 /**
  * Handler function signature
@@ -57,7 +59,9 @@ export const toolRoutes: Record<string, ToolHandler> = {
   sonar_link_existing_project: handleLinkExistingProject,
   sonar_get_coverage_gaps: handleGetCoverageGaps,
   sonar_get_uncovered_files: handleGetUncoveredFiles,
-  sonar_generate_config: handleGenerateConfig
+  sonar_generate_config: handleGenerateConfig,
+  trivy_scan_dependencies: handleTrivyScanDependencies,
+  trivy_check_installation: handleTrivyCheckInstallation
 };
 
 /**
