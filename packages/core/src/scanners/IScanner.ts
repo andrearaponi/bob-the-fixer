@@ -67,15 +67,6 @@ export interface IScanner {
   scan(params: ScanParams): Promise<IScanResult>;
 
   /**
-   * Get issues with optional filtering
-   *
-   * @param projectKey - Project to get issues for
-   * @param filter - Optional filter criteria
-   * @returns Array of issues matching the filter
-   */
-  getIssues(projectKey: string, filter?: IssueFilter): Promise<IIssue[]>;
-
-  /**
    * Check if the scanner is available and properly configured
    *
    * @returns Health status of the scanner
@@ -96,22 +87,28 @@ export interface IScanner {
 }
 
 /**
- * Factory interface for creating scanner instances
+ * Queryable scanner capability.
+ *
+ * Optional extension for scanners backed by a server-side issue store that can
+ * be queried by project key (e.g. SonarQube). Scan-and-return-only scanners
+ * such as Trivy do NOT implement this — they surface findings from scan().
  */
-export interface IScannerFactory {
+export interface IQueryableScanner extends IScanner {
   /**
-   * Create a scanner instance
+   * Get issues with optional filtering from the scanner's server-side store.
    *
-   * @param name - Scanner name
-   * @param config - Scanner configuration
-   * @returns Scanner instance
+   * @param projectKey - Project to get issues for
+   * @param filter - Optional filter criteria
+   * @returns Array of issues matching the filter
    */
-  create(name: string, config?: ScannerConfig): IScanner;
+  getIssues(projectKey: string, filter?: IssueFilter): Promise<IIssue[]>;
+}
 
-  /**
-   * Get all available scanner names
-   */
-  getAvailableScanners(): string[];
+/**
+ * Type guard: does a scanner support server-side issue queries?
+ */
+export function isQueryableScanner(scanner: IScanner): scanner is IQueryableScanner {
+  return typeof (scanner as Partial<IQueryableScanner>).getIssues === 'function';
 }
 
 /**
@@ -126,7 +123,6 @@ export abstract class BaseScannerImpl implements IScanner {
   protected config: ScannerConfig = { enabled: true };
 
   abstract scan(params: ScanParams): Promise<IScanResult>;
-  abstract getIssues(projectKey: string, filter?: IssueFilter): Promise<IIssue[]>;
   abstract checkHealth(): Promise<ScannerHealthStatus>;
 
   getConfig(): ScannerConfig {

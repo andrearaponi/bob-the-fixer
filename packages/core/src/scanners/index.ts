@@ -35,10 +35,13 @@ export type {
 // Scanner interface
 export type {
   IScanner,
+  IQueryableScanner,
   ScannerConfig,
   ScannerHealthStatus,
-  IScannerFactory,
 } from './IScanner.js';
 
-// Base implementation
-export { BaseScannerImpl } from './IScanner.js';
+// Base implementation + runtime helpers
+export { BaseScannerImpl, isQueryableScanner } from './IScanner.js';
+
+// Registry
+export { ScannerRegistry } from './ScannerRegistry.js';

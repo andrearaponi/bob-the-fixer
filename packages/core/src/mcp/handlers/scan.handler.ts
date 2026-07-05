@@ -6,14 +6,15 @@
  */
 
 import { injectable, inject } from 'tsyringe';
-import { ScanOrchestrator, ScanResultProcessor, ScanRecoverableError } from '../../core/scanning/index.js';
+import { ScanResultProcessor, ScanRecoverableError } from '../../core/scanning/index.js';
 import { ScanFallbackService } from '../../core/scanning/fallback/index.js';
+import { SonarQubeScanner } from '../../sonar/scanner/index.js';
 import { IProjectManager, ISonarAdmin } from '../../infrastructure/interfaces/index.js';
 import { TOKENS } from '../../infrastructure/di/tokens.js';
 import { ProjectManager } from '../../universal/project-manager.js';
 import { SonarAdmin } from '../../universal/sonar-admin.js';
 import { validateInput, SonarScanProjectSchema } from '../../shared/validators/mcp-schemas.js';
-import { MCPResponse, ScanParams } from '../../shared/types/index.js';
+import { MCPResponse, ScanResult } from '../../shared/types/index.js';
 import { sanitizeUrl } from '../../infrastructure/security/input-sanitization.js';
 import { IHandler } from './IHandler.js';
 
@@ -41,25 +42,26 @@ export class ScanHandler implements IHandler<ScanArgs> {
     // Validate input
     const validatedArgs = validateInput(SonarScanProjectSchema, args, 'sonar_scan_project');
 
-    // Extract scan parameters
-    const scanParams: ScanParams = {
-      projectPath: validatedArgs.projectPath,
-      severityFilter: validatedArgs.severityFilter as any,
-      typeFilter: validatedArgs.typeFilter as any,
-      autoSetup: validatedArgs.autoSetup,
+    // Build generic scanner params; Sonar-specific filters travel in options.
+    const scanParams = {
+      projectPath: validatedArgs.projectPath ?? process.cwd(),
+      options: {
+        severityFilter: validatedArgs.severityFilter,
+        typeFilter: validatedArgs.typeFilter,
+        autoSetup: validatedArgs.autoSetup,
+      },
     };
 
-    // Create orchestrator and execute scan
-    const orchestrator = new ScanOrchestrator(
-      this.projectManager as any,
-      this.sonarAdmin as any
-    );
+    // Route the scan through the IScanner abstraction. The SonarQube engine
+    // (ScanOrchestrator) is driven by SonarQubeScanner; the native Sonar
+    // ScanResult is preserved in rawOutput so the text summary is unchanged.
+    const scanner = new SonarQubeScanner(this.projectManager, this.sonarAdmin);
 
     try {
-      const result = await orchestrator.execute(scanParams, correlationId);
+      const iresult = await scanner.scan(scanParams, correlationId);
 
       // Format result as text summary
-      const summary = ScanResultProcessor.formatAsTextSummary(result);
+      const summary = ScanResultProcessor.formatAsTextSummary(iresult.rawOutput as ScanResult);
 
       return {
         content: [{ type: 'text', text: summary }],
@@ -94,12 +96,14 @@ export async function handleScanProject(
   // Validate input
   const validatedArgs = validateInput(SonarScanProjectSchema, args, 'sonar_scan_project');
 
-  // Extract scan parameters
-  const scanParams: ScanParams = {
-    projectPath: validatedArgs.projectPath,
-    severityFilter: validatedArgs.severityFilter as any,
-    typeFilter: validatedArgs.typeFilter as any,
-    autoSetup: validatedArgs.autoSetup,
+  // Build generic scanner params; Sonar-specific filters travel in options.
+  const scanParams = {
+    projectPath: validatedArgs.projectPath ?? process.cwd(),
+    options: {
+      severityFilter: validatedArgs.severityFilter,
+      typeFilter: validatedArgs.typeFilter,
+      autoSetup: validatedArgs.autoSetup,
+    },
   };
 
   // Initialize dependencies (legacy approach)
@@ -108,17 +112,14 @@ export async function handleScanProject(
   const sonarToken = process.env.SONAR_TOKEN;
   const sonarAdmin = new SonarAdmin(sonarUrl, sonarToken);
 
-  // Create orchestrator and execute scan
-  const orchestrator = new ScanOrchestrator(
-    projectManager as any,
-    sonarAdmin as any
-  );
+  // Route the scan through the IScanner abstraction (see ScanHandler above).
+  const scanner = new SonarQubeScanner(projectManager, sonarAdmin);
 
   try {
-    const result = await orchestrator.execute(scanParams, correlationId);
+    const iresult = await scanner.scan(scanParams, correlationId);
 
     // Format result as text summary
-    const summary = ScanResultProcessor.formatAsTextSummary(result);
+    const summary = ScanResultProcessor.formatAsTextSummary(iresult.rawOutput as ScanResult);
 
     return {
       content: [{ type: 'text', text: summary }],
