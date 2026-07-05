@@ -5,10 +5,8 @@
  * Uses dependency injection for testability.
  */
 
-import { injectable, inject } from 'tsyringe';
 import { CleanupService } from '../../core/admin/index.js';
 import { ISonarAdmin } from '../../infrastructure/interfaces/index.js';
-import { TOKENS } from '../../infrastructure/di/tokens.js';
 import { MCPResponse } from '../../shared/types/index.js';
 import { sanitizeUrl } from '../../infrastructure/security/input-sanitization.js';
 import { SonarAdmin } from '../../universal/sonar-admin.js';
@@ -25,32 +23,9 @@ export interface CleanupArgs {
 /**
  * Injectable cleanup handler class
  */
-@injectable()
-export class CleanupHandler implements IHandler<CleanupArgs> {
-  constructor(
-    @inject(TOKENS.SonarAdmin) private readonly sonarAdmin: ISonarAdmin
-  ) {}
-
-  async handle(args: CleanupArgs, correlationId?: string): Promise<MCPResponse> {
-    const { olderThanDays = 30, dryRun = false } = args;
-
-    const service = new CleanupService(this.sonarAdmin as any);
-
-    const report = await service.cleanup(
-      { olderThanDays, dryRun },
-      correlationId
-    );
-
-    return {
-      content: [{ type: 'text', text: report }],
-    };
-  }
-}
-
 /**
  * Handle cleanup MCP tool request
  *
- * @deprecated Use CleanupHandler class with DI instead
  */
 export async function handleCleanup(
   args: any,

@@ -4,12 +4,10 @@
  * Supports auto-detection of project properties using PreScanValidator
  */
 
-import { injectable, inject } from 'tsyringe';
 import { PropertiesFileManager } from '../../core/scanning/fallback/index.js';
 import { validateInput, SonarGenerateConfigSchema } from '../../shared/validators/mcp-schemas.js';
 import { MCPResponse, SonarPropertiesConfig, DetectedProperty } from '../../shared/types/index.js';
 import { IProjectManager } from '../../infrastructure/interfaces/index.js';
-import { TOKENS } from '../../infrastructure/di/tokens.js';
 import { ProjectManager } from '../../universal/project-manager.js';
 import { sanitizePath } from '../../infrastructure/security/input-sanitization.js';
 import { PreScanValidator } from '../../core/scanning/validation/PreScanValidator.js';
@@ -139,180 +137,9 @@ interface AutoDetectionInfo {
 /**
  * Injectable generate config handler class
  */
-@injectable()
-export class GenerateConfigHandler implements IHandler<GenerateConfigArgs> {
-  constructor(
-    @inject(TOKENS.ProjectManager) private readonly projectManager: IProjectManager
-  ) {}
-
-  async handle(args: GenerateConfigArgs, correlationId?: string): Promise<MCPResponse> {
-    // Validate input
-    const validatedArgs = validateInput(
-      SonarGenerateConfigSchema,
-      args,
-      'sonar_generate_config'
-    ) as GenerateConfigArgs;
-
-    // Resolve project path
-    const projectPath = validatedArgs.projectPath
-      ? sanitizePath(validatedArgs.projectPath)
-      : process.cwd();
-
-    // Get settings
-    const autoDetect = validatedArgs.autoDetect !== false;  // Default true
-    const libraryPathStrategy = validatedArgs.libraryPathStrategy || 'relative';
-
-    // Get existing project configuration if available
-    this.projectManager.setWorkingDirectory(projectPath);
-
-    let existingProjectKey: string | undefined;
-    let projectKeyWarning: string | undefined;
-
-    try {
-      const existingConfig = await this.projectManager.getOrCreateConfig();
-      existingProjectKey = existingConfig.sonarProjectKey;
-    } catch {
-      // No existing config, that's fine
-    }
-
-    // Auto-detection using PreScanValidator
-    let autoDetectionInfo: AutoDetectionInfo | undefined;
-    const detectedPropertiesMap = new Map<string, DetectedProperty>();
-
-    if (autoDetect) {
-      const preScanValidator = new PreScanValidator();
-      const validationResult = await preScanValidator.validate(projectPath);
-
-      // Store detected properties for merging
-      for (const prop of validationResult.detectedProperties) {
-        detectedPropertiesMap.set(prop.key, prop);
-      }
-
-      // Build auto-detection info for output
-      autoDetectionInfo = {
-        languages: validationResult.languages.map(l =>
-          l.buildTool ? `${l.language} (${l.buildTool})` : l.language
-        ),
-        propertiesDetected: validationResult.detectedProperties.length,
-        detectedProperties: validationResult.detectedProperties.map(p => ({
-          key: p.key,
-          value: p.value.length > 60 ? p.value.substring(0, 57) + '...' : p.value,
-          confidence: p.confidence,
-          used: true  // Will be updated after merge
-        })),
-        userOverrides: [],
-        libraryInfo: undefined
-      };
-    }
-
-    // Helper to get value: user override > detected > undefined
-    const getValue = (sonarKey: string, userValue?: string): string | undefined => {
-      if (userValue !== undefined && userValue !== '') {
-        // Track override
-        if (autoDetectionInfo && detectedPropertiesMap.has(sonarKey)) {
-          autoDetectionInfo.userOverrides.push(sonarKey);
-          // Mark as not used
-          const prop = autoDetectionInfo.detectedProperties.find(p => p.key === sonarKey);
-          if (prop) prop.used = false;
-        }
-        return userValue;
-      }
-      return detectedPropertiesMap.get(sonarKey)?.value;
-    };
-
-    // Determine project key to use
-    let projectKey: string;
-    if (validatedArgs.config?.projectKey) {
-      projectKey = validatedArgs.config.projectKey;
-      // Warn if different from existing
-      if (existingProjectKey && existingProjectKey !== projectKey) {
-        projectKeyWarning = `⚠️ Project key "${projectKey}" differs from configured key "${existingProjectKey}" in bobthefixer.env. ` +
-          `Make sure this project exists in SonarQube or use the configured key.`;
-      }
-    } else if (existingProjectKey) {
-      projectKey = existingProjectKey;
-    } else {
-      // Generate a default project key
-      const projectContext = await this.projectManager.analyzeProject();
-      projectKey = `${projectContext.name.toLowerCase().replace(/[^a-z0-9-]/g, '-')}`;
-      projectKeyWarning = `⚠️ No project key provided and no bobthefixer.env found. Using generated key "${projectKey}". ` +
-        `Run sonar_auto_setup first to create the project in SonarQube.`;
-    }
-
-    // Process library paths according to strategy
-    const rawLibraries = getValue('sonar.java.libraries', validatedArgs.config?.javaLibraries);
-    const processedLibraries = processLibraryPaths(rawLibraries, projectPath, libraryPathStrategy);
-
-    // Track library info for output
-    if (autoDetectionInfo && rawLibraries) {
-      autoDetectionInfo.libraryInfo = {
-        count: countLibraries(rawLibraries),
-        summary: summarizeLibraries(rawLibraries, 3),
-        strategy: libraryPathStrategy
-      };
-    }
-
-    // Build config with merged values (user overrides detected)
-    const config: SonarPropertiesConfig = {
-      projectKey,
-      projectName: validatedArgs.config?.projectName,
-      projectVersion: validatedArgs.config?.projectVersion,
-      sources: getValue('sonar.sources', validatedArgs.config?.sources) || 'src',
-      tests: getValue('sonar.tests', validatedArgs.config?.tests),
-      exclusions: validatedArgs.config?.exclusions,
-      encoding: validatedArgs.config?.encoding || 'UTF-8',
-      javaBinaries: getValue('sonar.java.binaries', validatedArgs.config?.javaBinaries),
-      javaTestBinaries: getValue('sonar.java.test.binaries', validatedArgs.config?.javaTestBinaries),
-      javaLibraries: processedLibraries,
-      javaSource: getValue('sonar.java.source', validatedArgs.config?.javaSource),
-      coverageReportPaths: getValue('sonar.coverage.jacoco.xmlReportPaths', validatedArgs.config?.coverageReportPaths),
-      additionalProperties: validatedArgs.config?.additionalProperties
-    };
-
-    // Convert modules if present
-    if (validatedArgs.config?.modules && validatedArgs.config.modules.length > 0) {
-      config.modules = validatedArgs.config.modules.map(m => ({
-        name: m.name,
-        baseDir: m.baseDir,
-        sources: m.sources,
-        tests: m.tests,
-        binaries: m.binaries,
-        exclusions: m.exclusions,
-        language: m.language
-      }));
-    }
-
-    // Create properties file
-    const propertiesManager = new PropertiesFileManager();
-    const result = await propertiesManager.writeConfig(projectPath, config);
-
-    // Add project key warning if any
-    if (projectKeyWarning) {
-      result.warnings = result.warnings || [];
-      result.warnings.unshift(projectKeyWarning);
-    }
-
-    // Generate directory tree for context
-    let directoryTree: string | undefined;
-    try {
-      directoryTree = await generateAbbreviatedTree(projectPath);
-    } catch {
-      // Ignore errors - tree is optional
-    }
-
-    // Format output with auto-detection info and directory tree
-    const text = formatGenerateConfigResult(result, projectPath, existingProjectKey, autoDetectionInfo, directoryTree);
-
-    return {
-      content: [{ type: 'text', text }]
-    };
-  }
-}
-
 /**
  * Handle generate config MCP tool request
  *
- * @deprecated Use GenerateConfigHandler class with DI instead
  */
 export async function handleGenerateConfig(
   args: any,

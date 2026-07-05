@@ -5,10 +5,8 @@
  * Uses dependency injection for testability.
  */
 
-import { injectable, inject } from 'tsyringe';
 import { ProjectDeletionService } from '../../core/admin/index.js';
 import { IProjectManager, ISonarAdmin } from '../../infrastructure/interfaces/index.js';
-import { TOKENS } from '../../infrastructure/di/tokens.js';
 import { MCPResponse } from '../../shared/types/index.js';
 import { sanitizeUrl } from '../../infrastructure/security/input-sanitization.js';
 import { ProjectManager } from '../../universal/project-manager.js';
@@ -26,47 +24,9 @@ export interface DeleteProjectArgs {
 /**
  * Injectable delete project handler class
  */
-@injectable()
-export class DeleteProjectHandler implements IHandler<DeleteProjectArgs> {
-  constructor(
-    @inject(TOKENS.ProjectManager) private readonly projectManager: IProjectManager,
-    @inject(TOKENS.SonarAdmin) private readonly sonarAdmin: ISonarAdmin
-  ) {}
-
-  async handle(args: DeleteProjectArgs, correlationId?: string): Promise<MCPResponse> {
-    try {
-      const { projectKey, confirm } = args;
-
-      const service = new ProjectDeletionService(
-        this.projectManager as any,
-        this.sonarAdmin as any
-      );
-
-      const report = await service.deleteProject(
-        { projectKey, confirm },
-        correlationId
-      );
-
-      return {
-        content: [{ type: 'text', text: report }],
-      };
-    } catch (error: any) {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `PROJECT DELETION ERROR\n\n${error.message}\n\nThe project could not be deleted. Check your permissions and try again.`,
-          },
-        ],
-      };
-    }
-  }
-}
-
 /**
  * Handle delete project MCP tool request
  *
- * @deprecated Use DeleteProjectHandler class with DI instead
  */
 export async function handleDeleteProject(
   args: any,

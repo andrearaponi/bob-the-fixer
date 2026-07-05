@@ -3,9 +3,7 @@
  * Analyzes security hotspots and provides detailed security information
  */
 
-import { injectable, inject } from 'tsyringe';
 import { IProjectManager } from '../../infrastructure/interfaces/index.js';
-import { TOKENS } from '../../infrastructure/di/tokens.js';
 import { SonarQubeClient } from '../../sonar/index.js';
 import { getLogger, StructuredLogger } from '../../shared/logger/structured-logger.js';
 import { getVulnerabilityEmoji, cleanHtmlContent, buildSourceContext } from '../../shared/utils/issue-details-utils.js';
@@ -23,12 +21,11 @@ export interface SecurityHotspotDetailsOptions {
   contextLines?: number;
 }
 
-@injectable()
 export class SecurityAnalyzer {
   private readonly logger: StructuredLogger;
 
   constructor(
-    @inject(TOKENS.ProjectManager) private readonly projectManager: IProjectManager
+    private readonly projectManager: IProjectManager
   ) {
     this.logger = getLogger();
   }

@@ -5,9 +5,7 @@
  * Provides detailed duplication analysis for a specific file.
  */
 
-import { injectable, inject } from 'tsyringe';
 import { IProjectManager } from '../../infrastructure/interfaces/index.js';
-import { TOKENS } from '../../infrastructure/di/tokens.js';
 import { ProjectManager } from '../../universal/project-manager.js';
 import { SonarQubeClient } from '../../sonar/index.js';
 import { validateInput, SonarGetDuplicationDetailsSchema } from '../../shared/validators/mcp-schemas.js';
@@ -25,55 +23,6 @@ export interface DuplicationDetailsArgs {
 /**
  * Injectable duplication details handler class
  */
-@injectable()
-export class DuplicationDetailsHandler implements IHandler<DuplicationDetailsArgs> {
-  constructor(
-    @inject(TOKENS.ProjectManager) private readonly projectManager: IProjectManager
-  ) {}
-
-  async handle(args: DuplicationDetailsArgs, correlationId?: string): Promise<MCPResponse> {
-    try {
-      // Validate input
-      const validatedArgs = validateInput(SonarGetDuplicationDetailsSchema, args, 'sonar_get_duplication_details');
-
-      const config = await this.projectManager.getOrCreateConfig();
-      const projectContext = await this.projectManager.analyzeProject();
-
-      const sonarClient = new SonarQubeClient(
-        config.sonarUrl,
-        config.sonarToken,
-        config.sonarProjectKey,
-        projectContext
-      );
-
-      // Get duplication details from SonarQube
-      const details = await sonarClient.getDuplicationDetails(validatedArgs.fileKey);
-
-      // Build report
-      const report = buildDuplicationDetailsReport(
-        validatedArgs.fileKey,
-        details,
-        validatedArgs.includeRecommendations !== false,
-        projectContext?.path
-      );
-
-      return {
-        content: [{ type: 'text', text: report }],
-      };
-    } catch (error: any) {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Error getting duplication details: ${error.message}`,
-          },
-        ],
-        isError: true,
-      };
-    }
-  }
-}
-
 /**
  * Build a human-readable duplication details report
  */
@@ -188,7 +137,6 @@ function buildDuplicationDetailsReport(
 /**
  * Handle get duplication details MCP tool request
  *
- * @deprecated Use DuplicationDetailsHandler class with DI instead
  */
 export async function handleGetDuplicationDetails(
   args: any,

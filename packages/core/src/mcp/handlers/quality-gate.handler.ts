@@ -5,10 +5,8 @@
  * Uses dependency injection for testability.
  */
 
-import { injectable, inject } from 'tsyringe';
 import { QualityAnalyzer } from '../../core/analysis/index.js';
 import { IProjectManager } from '../../infrastructure/interfaces/index.js';
-import { TOKENS } from '../../infrastructure/di/tokens.js';
 import { ProjectManager } from '../../universal/project-manager.js';
 import { MCPResponse } from '../../shared/types/index.js';
 import { IHandler } from './IHandler.js';
@@ -23,41 +21,9 @@ export interface QualityGateArgs {
 /**
  * Injectable quality gate handler class
  */
-@injectable()
-export class QualityGateHandler implements IHandler<QualityGateArgs> {
-  constructor(
-    @inject(TOKENS.ProjectManager) private readonly projectManager: IProjectManager
-  ) {}
-
-  async handle(args: QualityGateArgs, correlationId?: string): Promise<MCPResponse> {
-    try {
-      const service = new QualityAnalyzer(this.projectManager as any);
-
-      // Get quality gate status
-      const report = await service.getQualityGate(correlationId);
-
-      return {
-        content: [{ type: 'text', text: report }],
-      };
-    } catch (error: any) {
-      const errorMsg = error?.message || 'Unknown error';
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Quality Gate Status Error\n\n${errorMsg}`,
-          },
-        ],
-        isError: true,
-      };
-    }
-  }
-}
-
 /**
  * Handle get quality gate MCP tool request
  *
- * @deprecated Use QualityGateHandler class with DI instead
  */
 export async function handleGetQualityGate(
   args: any,

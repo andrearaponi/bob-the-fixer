@@ -3,9 +3,7 @@
  * Analyzes patterns in SonarQube issues and provides actionable insights
  */
 
-import { injectable, inject } from 'tsyringe';
 import { IProjectManager } from '../../infrastructure/interfaces/index.js';
-import { TOKENS } from '../../infrastructure/di/tokens.js';
 import { SonarQubeClient, PatternAnalyzer } from '../../sonar/index.js';
 import { getLogger, StructuredLogger } from '../../shared/logger/structured-logger.js';
 import { buildPatternAnalysisReport } from '../../reports/pattern-analysis-report.js';
@@ -23,12 +21,11 @@ export interface PatternAnalysisResult {
   report: string;
 }
 
-@injectable()
 export class PatternAnalysisService {
   private readonly logger: StructuredLogger;
 
   constructor(
-    @inject(TOKENS.ProjectManager) private readonly projectManager: IProjectManager
+    private readonly projectManager: IProjectManager
   ) {
     this.logger = getLogger();
   }

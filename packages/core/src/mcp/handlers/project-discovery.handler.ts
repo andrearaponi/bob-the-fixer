@@ -3,10 +3,8 @@
  * Delegates to ProjectDiscovery service
  */
 
-import { injectable, inject } from 'tsyringe';
 import { ProjectDiscovery } from '../../core/project/index.js';
 import { IProjectManager, ISonarAdmin } from '../../infrastructure/interfaces/index.js';
-import { TOKENS } from '../../infrastructure/di/tokens.js';
 import { ProjectManager } from '../../universal/project-manager.js';
 import { SonarAdmin } from '../../universal/sonar-admin.js';
 import { validateInput, SonarProjectDiscoverySchema } from '../../shared/validators/mcp-schemas.js';
@@ -25,40 +23,9 @@ export interface ProjectDiscoveryArgs {
 /**
  * Injectable project discovery handler class
  */
-@injectable()
-export class ProjectDiscoveryHandler implements IHandler<ProjectDiscoveryArgs> {
-  constructor(
-    @inject(TOKENS.ProjectManager) private readonly projectManager: IProjectManager,
-    @inject(TOKENS.SonarAdmin) private readonly sonarAdmin: ISonarAdmin
-  ) {}
-
-  async handle(args: ProjectDiscoveryArgs, correlationId?: string): Promise<MCPResponse> {
-    // Validate input
-    const validatedArgs = validateInput(SonarProjectDiscoverySchema, args, 'sonar_project_discovery');
-
-    // Create service and execute discovery
-    const service = new ProjectDiscovery(this.projectManager as any, this.sonarAdmin as any);
-    const result = await service.execute(
-      {
-        path: validatedArgs.path,
-        deep: validatedArgs.deep
-      },
-      correlationId
-    );
-
-    // Format result
-    const text = ProjectDiscovery.formatDiscoveryResult(result);
-
-    return {
-      content: [{ type: 'text', text }]
-    };
-  }
-}
-
 /**
  * Handle project discovery MCP tool request
  *
- * @deprecated Use ProjectDiscoveryHandler class with DI instead
  */
 export async function handleProjectDiscovery(
   args: any,

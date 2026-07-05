@@ -3,9 +3,7 @@
  * Manages Bob the Fixer configuration
  */
 
-import { injectable, inject } from 'tsyringe';
 import { IProjectManager } from '../../infrastructure/interfaces/index.js';
-import { TOKENS } from '../../infrastructure/di/tokens.js';
 import { getLogger, StructuredLogger } from '../../shared/logger/structured-logger.js';
 import * as fs from 'fs/promises';
 import * as path from 'path';
@@ -26,12 +24,11 @@ export interface ConfigInfo {
   isValid: boolean;
 }
 
-@injectable()
 export class ConfigManager {
   private readonly logger: StructuredLogger;
 
   constructor(
-    @inject(TOKENS.ProjectManager) private readonly projectManager: IProjectManager
+    private readonly projectManager: IProjectManager
   ) {
     this.logger = getLogger();
   }

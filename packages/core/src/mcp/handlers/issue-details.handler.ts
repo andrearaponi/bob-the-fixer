@@ -5,10 +5,8 @@
  * Uses dependency injection for testability.
  */
 
-import { injectable, inject } from 'tsyringe';
 import { IssueAnalyzer } from '../../core/analysis/index.js';
 import { IProjectManager } from '../../infrastructure/interfaces/index.js';
-import { TOKENS } from '../../infrastructure/di/tokens.js';
 import { ProjectManager } from '../../universal/project-manager.js';
 import { validateInput, SonarGetIssueDetailsSchema } from '../../shared/validators/mcp-schemas.js';
 import { MCPResponse } from '../../shared/types/index.js';
@@ -39,51 +37,9 @@ export interface IssueDetailsArgs {
 /**
  * Injectable issue details handler class
  */
-@injectable()
-export class IssueDetailsHandler implements IHandler<IssueDetailsArgs> {
-  constructor(
-    @inject(TOKENS.ProjectManager) private readonly projectManager: IProjectManager
-  ) {}
-
-  async handle(args: IssueDetailsArgs, correlationId?: string): Promise<MCPResponse> {
-    // Validate input
-    const validatedArgs = validateInput(SonarGetIssueDetailsSchema, args, 'sonar_get_issue_details');
-
-    const service = new IssueAnalyzer(this.projectManager as any);
-
-    // Get issue details
-    const report = await service.getIssueDetails(
-      {
-        issueKey: validatedArgs.issueKey,
-        contextLines: validatedArgs.contextLines,
-        includeRuleDetails: validatedArgs.includeRuleDetails,
-        includeCodeExamples: validatedArgs.includeCodeExamples,
-        includeFilePath: validatedArgs.includeFilePath,
-        includeFileHeader: validatedArgs.includeFileHeader,
-        headerMaxLines: validatedArgs.headerMaxLines,
-        includeDataFlow: validatedArgs.includeDataFlow,
-        maxFlows: validatedArgs.maxFlows,
-        maxFlowSteps: validatedArgs.maxFlowSteps,
-        flowContextLines: validatedArgs.flowContextLines,
-        includeSimilarFixed: validatedArgs.includeSimilarFixed,
-        maxSimilarIssues: validatedArgs.maxSimilarIssues,
-        includeRelatedTests: validatedArgs.includeRelatedTests,
-        includeCoverageHints: validatedArgs.includeCoverageHints,
-        includeScmHints: validatedArgs.includeScmHints,
-      },
-      correlationId
-    );
-
-    return {
-      content: [{ type: 'text', text: report }],
-    };
-  }
-}
-
 /**
  * Handle get issue details MCP tool request
  *
- * @deprecated Use IssueDetailsHandler class with DI instead
  */
 export async function handleGetIssueDetails(
   args: any,

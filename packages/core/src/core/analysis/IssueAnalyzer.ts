@@ -6,9 +6,7 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
-import { injectable, inject } from 'tsyringe';
 import { IProjectManager } from '../../infrastructure/interfaces/index.js';
-import { TOKENS } from '../../infrastructure/di/tokens.js';
 import { SonarQubeClient } from '../../sonar/index.js';
 import { getLogger, StructuredLogger } from '../../shared/logger/structured-logger.js';
 import {
@@ -66,12 +64,11 @@ export interface IssueDetails {
   filePath?: string;
 }
 
-@injectable()
 export class IssueAnalyzer {
   private readonly logger: StructuredLogger;
 
   constructor(
-    @inject(TOKENS.ProjectManager) private readonly projectManager: IProjectManager
+    private readonly projectManager: IProjectManager
   ) {
     this.logger = getLogger();
   }

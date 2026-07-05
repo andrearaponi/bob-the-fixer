@@ -5,10 +5,8 @@
  * Uses dependency injection for testability.
  */
 
-import { injectable, inject } from 'tsyringe';
 import { DiagnosticsService } from '../../core/admin/index.js';
 import { IProjectManager, ISonarAdmin } from '../../infrastructure/interfaces/index.js';
-import { TOKENS } from '../../infrastructure/di/tokens.js';
 import { MCPResponse } from '../../shared/types/index.js';
 import { sanitizeUrl } from '../../infrastructure/security/input-sanitization.js';
 import { ProjectManager } from '../../universal/project-manager.js';
@@ -25,44 +23,9 @@ export interface DiagnosePermissionsArgs {
 /**
  * Injectable diagnose permissions handler class
  */
-@injectable()
-export class DiagnosePermissionsHandler implements IHandler<DiagnosePermissionsArgs> {
-  constructor(
-    @inject(TOKENS.ProjectManager) private readonly projectManager: IProjectManager,
-    @inject(TOKENS.SonarAdmin) private readonly sonarAdmin: ISonarAdmin
-  ) {}
-
-  async handle(args: DiagnosePermissionsArgs, correlationId?: string): Promise<MCPResponse> {
-    try {
-      const { verbose = true } = args;
-
-      const service = new DiagnosticsService(
-        this.projectManager as any,
-        this.sonarAdmin as any
-      );
-
-      const report = await service.diagnose({ verbose }, correlationId);
-
-      return {
-        content: [{ type: 'text', text: report }],
-      };
-    } catch (error: any) {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `DIAGNOSTIC ERROR: ${error.message}`,
-          },
-        ],
-      };
-    }
-  }
-}
-
 /**
  * Handle diagnose permissions MCP tool request
  *
- * @deprecated Use DiagnosePermissionsHandler class with DI instead
  */
 export async function handleDiagnosePermissions(
   args: any,

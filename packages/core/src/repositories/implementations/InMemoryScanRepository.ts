@@ -5,12 +5,10 @@
  * Useful for testing and development.
  */
 
-import { injectable } from 'tsyringe';
 import { IScanRepository, ScanStatistics } from '../IScanRepository.js';
 import { ScanRecord, ScanHistoryOptions } from '../../scanners/IScanResult.js';
 import { IssueSource } from '../../scanners/IIssue.js';
 
-@injectable()
 export class InMemoryScanRepository implements IScanRepository {
   private scans: Map<string, ScanRecord> = new Map();
 

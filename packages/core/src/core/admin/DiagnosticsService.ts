@@ -3,9 +3,7 @@
  * Diagnoses permission and connectivity issues
  */
 
-import { injectable, inject } from 'tsyringe';
 import { IProjectManager, ISonarAdmin } from '../../infrastructure/interfaces/index.js';
-import { TOKENS } from '../../infrastructure/di/tokens.js';
 import { SonarQubeClient } from '../../sonar/index.js';
 import { getLogger, StructuredLogger } from '../../shared/logger/structured-logger.js';
 
@@ -13,13 +11,12 @@ export interface DiagnosticsOptions {
   verbose?: boolean;
 }
 
-@injectable()
 export class DiagnosticsService {
   private readonly logger: StructuredLogger;
 
   constructor(
-    @inject(TOKENS.ProjectManager) private readonly projectManager: IProjectManager,
-    @inject(TOKENS.SonarAdmin) private readonly sonarAdmin: ISonarAdmin
+    private readonly projectManager: IProjectManager,
+    private readonly sonarAdmin: ISonarAdmin
   ) {
     this.logger = getLogger();
   }

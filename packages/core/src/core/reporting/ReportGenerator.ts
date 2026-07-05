@@ -3,9 +3,7 @@
  * Generates comprehensive quality reports in various formats
  */
 
-import { injectable, inject } from 'tsyringe';
 import { IProjectManager } from '../../infrastructure/interfaces/index.js';
-import { TOKENS } from '../../infrastructure/di/tokens.js';
 import { SonarQubeClient } from '../../sonar/index.js';
 import { getLogger, StructuredLogger } from '../../shared/logger/structured-logger.js';
 import {
@@ -28,12 +26,11 @@ export interface ReportGeneratorOptions {
   format?: 'summary' | 'detailed' | 'json';
 }
 
-@injectable()
 export class ReportGenerator {
   private readonly logger: StructuredLogger;
 
   constructor(
-    @inject(TOKENS.ProjectManager) private readonly projectManager: IProjectManager
+    private readonly projectManager: IProjectManager
   ) {
     this.logger = getLogger();
   }

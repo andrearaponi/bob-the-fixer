@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 
-import 'reflect-metadata';
 import { UniversalBobTheFixerMCPServer } from './universal/universal-mcp-server.js';
 import { getLogger } from './shared/logger/structured-logger.js';
 

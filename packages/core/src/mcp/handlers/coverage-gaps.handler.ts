@@ -5,10 +5,8 @@
  * Uses dependency injection for testability.
  */
 
-import { injectable, inject } from 'tsyringe';
 import { CoverageAnalyzer } from '../../core/analysis/index.js';
 import { IProjectManager } from '../../infrastructure/interfaces/index.js';
-import { TOKENS } from '../../infrastructure/di/tokens.js';
 import { ProjectManager } from '../../universal/project-manager.js';
 import { SonarQubeClient } from '../../sonar/index.js';
 import { validateInput, SonarGetCoverageGapsSchema } from '../../shared/validators/mcp-schemas.js';
@@ -25,44 +23,9 @@ export interface CoverageGapsArgs {
 /**
  * Injectable coverage gaps handler class
  */
-@injectable()
-export class CoverageGapsHandler implements IHandler<CoverageGapsArgs> {
-  constructor(
-    @inject(TOKENS.ProjectManager) private readonly projectManager: IProjectManager
-  ) {}
-
-  async handle(args: CoverageGapsArgs, correlationId?: string): Promise<MCPResponse> {
-    // Validate input
-    const validatedArgs = validateInput(SonarGetCoverageGapsSchema, args, 'sonar_get_coverage_gaps');
-
-    const config = await this.projectManager.getOrCreateConfig();
-    const projectContext = await this.projectManager.analyzeProject();
-
-    const sonarClient = new SonarQubeClient(
-      config.sonarUrl,
-      config.sonarToken,
-      config.sonarProjectKey,
-      projectContext
-    );
-
-    // Fetch line coverage from SonarQube
-    const lineCoverage = await sonarClient.getLineCoverage(validatedArgs.componentKey);
-
-    // Analyze coverage gaps
-    const analyzer = new CoverageAnalyzer();
-    const result = analyzer.analyzeCoverage(validatedArgs.componentKey, lineCoverage);
-
-    // Return the summary (already formatted for LLM)
-    return {
-      content: [{ type: 'text', text: result.summary }],
-    };
-  }
-}
-
 /**
  * Handle get coverage gaps MCP tool request
  *
- * @deprecated Use CoverageGapsHandler class with DI instead
  */
 export async function handleGetCoverageGaps(
   args: any,

@@ -1,7 +1,6 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import { injectable } from 'tsyringe';
 import {
   IProjectManager,
   ProjectConfig,
@@ -11,7 +10,6 @@ import {
 // Re-export types for backwards compatibility
 export type { ProjectConfig, ProjectContext };
 
-@injectable()
 export class ProjectManager implements IProjectManager {
   private readonly CONFIG_FILE = 'bobthefixer.env';
   private readonly GITIGNORE_ENTRY = 'bobthefixer.env';

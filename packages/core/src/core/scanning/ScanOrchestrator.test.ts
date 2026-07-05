@@ -456,6 +456,26 @@ describe('ScanOrchestrator', () => {
       }
     });
 
+    it('R5.AC3: never leaks the auth token in the 403 diagnostic message', async () => {
+      mockSonarClient.triggerAnalysis = vi.fn(async () => {
+        throw new Error('Permission denied: 403');
+      });
+
+      const orch = new ScanOrchestrator(mockProjectManager, mockSonarAdmin, {
+        enableFallback: true,
+        retryDelay: 0
+      });
+
+      try {
+        await orch.execute({ autoSetup: false });
+        expect(true).toBe(false);
+      } catch (error: any) {
+        // The diagnostic reports token presence/length, never the token itself.
+        expect(error.message).toMatch(/Token: present \(\d+ chars\)/);
+        expect(error.message).not.toContain('sqp_test_token_1234567890');
+      }
+    });
+
     it('should detect "No sources found" as recoverable', async () => {
       mockSonarClient.triggerAnalysis = vi.fn(async () => {
         throw new Error('No sources found for analysis');

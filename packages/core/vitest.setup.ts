@@ -1,8 +1,8 @@
 /**
  * Vitest Setup File
  *
- * This file is executed before each test file.
- * It sets up global dependencies like reflect-metadata for tsyringe.
+ * Executed before each test file. Intentionally empty: the previous
+ * `reflect-metadata` import was only needed by the (now removed) TSyringe DI.
  */
 
-import 'reflect-metadata';
+export {};

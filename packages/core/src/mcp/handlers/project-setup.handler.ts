@@ -3,10 +3,8 @@
  * Delegates to ProjectSetup service
  */
 
-import { injectable, inject } from 'tsyringe';
 import { ProjectSetup } from '../../core/project/index.js';
 import { IProjectManager, ISonarAdmin } from '../../infrastructure/interfaces/index.js';
-import { TOKENS } from '../../infrastructure/di/tokens.js';
 import { ProjectManager } from '../../universal/project-manager.js';
 import { SonarAdmin } from '../../universal/sonar-admin.js';
 import { validateInput, SonarAutoSetupSchema } from '../../shared/validators/mcp-schemas.js';
@@ -25,40 +23,9 @@ export interface ProjectSetupArgs {
 /**
  * Injectable project setup handler class
  */
-@injectable()
-export class ProjectSetupHandler implements IHandler<ProjectSetupArgs> {
-  constructor(
-    @inject(TOKENS.ProjectManager) private readonly projectManager: IProjectManager,
-    @inject(TOKENS.SonarAdmin) private readonly sonarAdmin: ISonarAdmin
-  ) {}
-
-  async handle(args: ProjectSetupArgs, correlationId?: string): Promise<MCPResponse> {
-    // Validate input
-    const validatedArgs = validateInput(SonarAutoSetupSchema, args, 'sonar_auto_setup');
-
-    // Create service and execute setup
-    const service = new ProjectSetup(this.projectManager as any, this.sonarAdmin as any);
-    const result = await service.execute(
-      {
-        force: validatedArgs.force,
-        template: validatedArgs.template
-      },
-      correlationId
-    );
-
-    // Format result
-    const text = ProjectSetup.formatSetupResult(result);
-
-    return {
-      content: [{ type: 'text', text }]
-    };
-  }
-}
-
 /**
  * Handle auto setup MCP tool request
  *
- * @deprecated Use ProjectSetupHandler class with DI instead
  */
 export async function handleAutoSetup(
   args: any,

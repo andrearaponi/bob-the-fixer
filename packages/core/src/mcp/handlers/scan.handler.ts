@@ -5,12 +5,10 @@
  * Uses dependency injection for testability.
  */
 
-import { injectable, inject } from 'tsyringe';
 import { ScanResultProcessor, ScanRecoverableError } from '../../core/scanning/index.js';
 import { ScanFallbackService } from '../../core/scanning/fallback/index.js';
 import { SonarQubeScanner } from '../../sonar/scanner/index.js';
 import { IProjectManager, ISonarAdmin } from '../../infrastructure/interfaces/index.js';
-import { TOKENS } from '../../infrastructure/di/tokens.js';
 import { ProjectManager } from '../../universal/project-manager.js';
 import { SonarAdmin } from '../../universal/sonar-admin.js';
 import { validateInput, SonarScanProjectSchema } from '../../shared/validators/mcp-schemas.js';
@@ -31,63 +29,9 @@ export interface ScanArgs {
 /**
  * Injectable scan handler class
  */
-@injectable()
-export class ScanHandler implements IHandler<ScanArgs> {
-  constructor(
-    @inject(TOKENS.ProjectManager) private readonly projectManager: IProjectManager,
-    @inject(TOKENS.SonarAdmin) private readonly sonarAdmin: ISonarAdmin
-  ) {}
-
-  async handle(args: ScanArgs, correlationId?: string): Promise<MCPResponse> {
-    // Validate input
-    const validatedArgs = validateInput(SonarScanProjectSchema, args, 'sonar_scan_project');
-
-    // Build generic scanner params; Sonar-specific filters travel in options.
-    const scanParams = {
-      projectPath: validatedArgs.projectPath ?? process.cwd(),
-      options: {
-        severityFilter: validatedArgs.severityFilter,
-        typeFilter: validatedArgs.typeFilter,
-        autoSetup: validatedArgs.autoSetup,
-      },
-    };
-
-    // Route the scan through the IScanner abstraction. The SonarQube engine
-    // (ScanOrchestrator) is driven by SonarQubeScanner; the native Sonar
-    // ScanResult is preserved in rawOutput so the text summary is unchanged.
-    const scanner = new SonarQubeScanner(this.projectManager, this.sonarAdmin);
-
-    try {
-      const iresult = await scanner.scan(scanParams, correlationId);
-
-      // Format result as text summary
-      const summary = ScanResultProcessor.formatAsTextSummary(iresult.rawOutput as ScanResult);
-
-      return {
-        content: [{ type: 'text', text: summary }],
-      };
-    } catch (error) {
-      // Handle recoverable scan errors with fallback information
-      if (error instanceof ScanRecoverableError) {
-        const fallbackService = new ScanFallbackService();
-        const formattedOutput = fallbackService.formatForOutput(error.fallbackAnalysis);
-
-        return {
-          content: [{ type: 'text', text: formattedOutput }],
-          isError: true,
-        };
-      }
-
-      // Re-throw other errors
-      throw error;
-    }
-  }
-}
-
 /**
  * Handle scan project MCP tool request
  *
- * @deprecated Use ScanHandler class with DI instead
  */
 export async function handleScanProject(
   args: any,

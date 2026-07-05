@@ -3,9 +3,7 @@
  * Handles safe deletion of SonarQube projects
  */
 
-import { injectable, inject } from 'tsyringe';
 import { IProjectManager, ISonarAdmin } from '../../infrastructure/interfaces/index.js';
-import { TOKENS } from '../../infrastructure/di/tokens.js';
 import { getLogger, StructuredLogger } from '../../shared/logger/structured-logger.js';
 import * as fs from 'fs/promises';
 import * as path from 'path';
@@ -15,13 +13,12 @@ export interface DeleteProjectOptions {
   confirm: boolean;
 }
 
-@injectable()
 export class ProjectDeletionService {
   private readonly logger: StructuredLogger;
 
   constructor(
-    @inject(TOKENS.ProjectManager) private readonly projectManager: IProjectManager,
-    @inject(TOKENS.SonarAdmin) private readonly sonarAdmin: ISonarAdmin
+    private readonly projectManager: IProjectManager,
+    private readonly sonarAdmin: ISonarAdmin
   ) {
     this.logger = getLogger();
   }

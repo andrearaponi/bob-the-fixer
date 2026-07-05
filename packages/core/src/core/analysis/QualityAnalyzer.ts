@@ -3,9 +3,7 @@
  * Analyzes quality gates, metrics, technical debt, and code duplication
  */
 
-import { injectable, inject } from 'tsyringe';
 import { IProjectManager } from '../../infrastructure/interfaces/index.js';
-import { TOKENS } from '../../infrastructure/di/tokens.js';
 import { SonarQubeClient } from '../../sonar/index.js';
 import { getLogger, StructuredLogger } from '../../shared/logger/structured-logger.js';
 import {
@@ -34,12 +32,11 @@ export interface DuplicationSummaryOptions {
   pageSize?: number;
 }
 
-@injectable()
 export class QualityAnalyzer {
   private readonly logger: StructuredLogger;
 
   constructor(
-    @inject(TOKENS.ProjectManager) private readonly projectManager: IProjectManager
+    private readonly projectManager: IProjectManager
   ) {
     this.logger = getLogger();
   }

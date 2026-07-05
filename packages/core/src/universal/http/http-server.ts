@@ -1,4 +1,3 @@
-import { injectable, inject } from 'tsyringe';
 import express, { Express, Request, Response } from 'express';
 import cors from 'cors';
 import { rateLimit } from 'express-rate-limit';
@@ -7,7 +6,6 @@ import { SessionManager } from './session-manager.js';
 import { ProjectManager } from '../project-manager.js';
 import { SonarQubeClient } from '../../sonar/client.js';
 import { IProjectManager } from '../../infrastructure/interfaces/index.js';
-import { TOKENS } from '../../infrastructure/di/tokens.js';
 
 export interface HTTPServerConfig {
   port?: number;
@@ -25,7 +23,6 @@ export interface HTTPServerConfig {
  * Supports dependency injection for testability while maintaining
  * backwards compatibility with direct instantiation.
  */
-@injectable()
 export class MCPHTTPServer {
   private app: Express;
   private server?: Server;
@@ -41,7 +38,7 @@ export class MCPHTTPServer {
    */
   constructor(
     config: HTTPServerConfig = {},
-    @inject(TOKENS.ProjectManager) injectedProjectManager?: IProjectManager
+    injectedProjectManager?: IProjectManager
   ) {
     this.config = {
       port: config.port ?? 3000,

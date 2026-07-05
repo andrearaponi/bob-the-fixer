@@ -1,5 +1,4 @@
 import axios, { AxiosInstance } from 'axios';
-import { injectable } from 'tsyringe';
 import { ProjectContext } from '../infrastructure/interfaces/IProjectManager.js';
 import {
   ISonarAdmin,
@@ -13,7 +12,6 @@ import {
 // Re-export types for backwards compatibility
 export type { SonarProjectInfo, SonarTokenInfo, QualityGateTemplate };
 
-@injectable()
 export class SonarAdmin implements ISonarAdmin {
   public readonly client: AxiosInstance;  // Make public for advanced operations
 
