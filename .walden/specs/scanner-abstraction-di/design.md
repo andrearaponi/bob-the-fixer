@@ -1,8 +1,8 @@
 ---
 status: approved
-approved_at: 2026-07-05T07:53:55Z
-last_modified: 2026-07-05T07:53:55Z
-approved_fingerprint: sha256:f130399812fa16cd6553107a88c2c416b51f3aa88cd760894247474bface2ced
+approved_at: 2026-07-05T08:52:00Z
+last_modified: 2026-07-05T08:52:00Z
+approved_fingerprint: sha256:79c30b4fd0d8e3be28a9b49521aef5b2dc02b014233a8c549bdb9a93e7774ce1
 source_requirements_approved_at: 2026-07-05T07:44:47Z
 source_requirements_fingerprint: sha256:b69bf78b5ba6a7766b8e6297045eced324fe07839c3914cf7045b301fdee1054
 ---
@@ -15,8 +15,8 @@ Oggi `ScanOrchestrator` costruisce e usa direttamente `SonarQubeClient` (il God 
 
 Il design punta a un'unica architettura target dove:
 
-1. **Un solo meccanismo di wiring** (composition root esplicito, **Opzione A** — vedi `## Options Considered`) costruisce gli handler e il set di scanner, eliminando il ramo `@deprecated`, il container TSyringe e gli `as any` alle giunzioni — soddisfa **R1**.
-2. **`ScanOrchestrator` dipende dall'astrazione `IScanner`** ottenuta da un **`ScannerRegistry`**, non da `SonarQubeClient` — soddisfa **R2, R3, R6**.
+1. **Un solo meccanismo di wiring**: la mappa `toolRoutes` a funzioni (**Opzione A** — vedi `## Options Considered` e `Wiring unico`), con la rimozione delle classi `@injectable` morte, del container TSyringe e di `reflect-metadata` — soddisfa **R1**.
+2. Lo scan è **instradato attraverso l'astrazione `IScanner`** (handler → `SonarQubeScanner` facade → `ScannerRegistry`), mentre `ScanOrchestrator` resta invariato come motore Sonar dietro la facade — soddisfa **R2, R3, R6**.
 3. Il contratto scanner è **"scan-and-return"**: `scan(params) → IScanResult` è il metodo canonico (vale per Sonar e per Trivy); la query per `projectKey` diventa una *capability opzionale* implementata solo dagli scanner con store lato server — soddisfa **R2.AC3**.
 4. Il path SonarQube viene **migrato dietro un `SonarQubeScanner` reale** (che riusa la macchina funzionante di `SonarQubeClient`, non il client morto), preservando gli output attuali — soddisfa **R4**.
 
@@ -45,8 +45,9 @@ Flusso target:
 
 Confini chiave:
 
-- **`ScanOrchestrator`** resta il proprietario delle preoccupazioni trasversali (acquisizione lock, policy di retry, generazione del fallback recuperabile, normalizzazione del riepilogo per l'output MCP) ma **non conosce più SonarQube**: chiede uno `IScanner` al registry e lo guida via `scan()`.
-- **La logica Sonar-specifica** oggi dentro `ScanOrchestrator`/`SonarQubeClient` (pre-scan validation, trigger analisi, polling CE, fetch issues/hotspots/metrics) viene spostata **dentro `SonarQubeScanner`** (pattern strangler-fig: si sposta, non si riscrive, per non regredire — **R4**).
+- **`SonarQubeScanner`** è la facade `IScanner`: `scan()` guida l'esistente `ScanOrchestrator` (che resta il **motore Sonar, invariato**: lock, retry, fallback, fetch, summary) e ne preserva il `ScanResult` nativo in `rawOutput` → parità di output garantita per costruzione (**R4.AC2**), zero regressioni.
+- **L'handler `sonar_scan_project`** instrada attraverso lo scanner (`IScanner.scan()`), non più costruendo direttamente l'orchestratore.
+- **Il `ScannerRegistry`** è il seam per aggiungere scanner (Trivy) senza toccare l'orchestratore (**R3.AC2**). I filtri Sonar-specifici viaggiano nel bag `options` di `ScanParams`, così il contratto `IScanner` resta scanner-agnostico.
 - **I consumatori** (reporting, analysis) dipendono esclusivamente dal modello normalizzato (**R6**).
 
 ## Options Considered
@@ -73,12 +74,11 @@ Il punto di biforcazione era **quale meccanismo di wiring** adottare per soddisf
 
 ## Components And Interfaces
 
-### Composition Root (Opzione A)
+### Wiring unico (Opzione A — realizzazione)
 
-- Purpose: unico punto che costruisce `ProjectManager`, `SonarAdmin`, `SonarQubeClient`, il `ScannerRegistry` (con `SonarQubeScanner` registrato) e la mappa degli handler; il `ToolRouter` riceve gli handler già costruiti.
-- Inputs/Outputs: `createScannerRegistry(config): ScannerRegistry`; `createHandlers(deps): Record<toolName, IHandler>`.
-- Rimozioni: `infrastructure/di/container.ts` e `tokens.ts`; decoratori `@injectable`/`@inject` da **~30+ file** (~20 handler + i **10 servizi `core/*`** che oggi importano `TOKENS` per `@inject(TOKENS.*)` + `SonarQubeScanner`); `reflect-metadata` da `package.json` e dagli entrypoint; tutte le funzioni `handle*()` `@deprecated`; la registrazione `HTTPServer` nel container.
-- Nota: le interfacce `IProjectManager`/`ISonarAdmin` in `infrastructure/interfaces/` si **mantengono** (tipi dei parametri costruttore); si rimuove solo il catalogo `TOKENS` e i decoratori.
+- Purpose: la **mappa `toolRoutes`** in `ToolRouter.ts` è l'unico meccanismo di wiring (nome-tool → funzione handler). Gli handler restano **funzioni** che costruiscono le dipendenze **per-chiamata** leggendo la config del progetto corrente. Questa è la realizzazione corretta di "Opzione A" per questo codebase: la config è **dinamica per-progetto** (il server MCP serve il progetto del CWD, risolto a ogni chiamata), quindi un composition root "costruisci-una-volta" sarebbe scorretto. Le classi `@injectable` mai risolte sono codice morto e vanno rimosse.
+- Rimozioni: le **classi `@injectable` morte** negli handler (registrate ma mai raggiunte dal router → violano R1.AC2); `infrastructure/di/container.ts` e `tokens.ts`; decoratori/import `tsyringe` e `TOKENS` da **~30 file** (21 handler + 10 servizi `core/*`; lo scanner è già fatto); `reflect-metadata` da `package.json`/entrypoint/setup; il client morto `SonarQubeApiClient`. Le funzioni handler perdono il tag `@deprecated` (ora sono il path unico).
+- Nota: le interfacce `IProjectManager`/`ISonarAdmin` si **mantengono** (tipi dei parametri).
 - Requirements: `R1.AC1`, `R1.AC2`, `R1.AC3`
 
 ### `IScanner` (contratto rivisto)
@@ -106,11 +106,10 @@ Il punto di biforcazione era **quale meccanismo di wiring** adottare per soddisf
 - Dependencies: riusa `SonarQubeClient` funzionante (non il morto `SonarQubeApiClient`, che viene rimosso o assorbito).
 - Requirements: `R4.AC1`, `R4.AC2`
 
-### `ScanOrchestrator` (reso scanner-agnostico)
+### `ScanOrchestrator` (invariato — motore Sonar dietro la facade)
 
-- Purpose: pipeline generica che seleziona lo scanner dal registry e lo guida, assemblando il riepilogo MCP.
-- Cambio: non costruisce più `SonarQubeClient`; dipende da `ScannerRegistry`/`IScanner`.
-- Requirements: `R2.AC1`, `R3.AC2`, `R4.AC2`
+- Purpose: resta il motore Sonar (pre-scan validation, retry, fallback, trigger analisi, fetch issues/hotspots/metrics, assemblaggio del riepilogo), **invariato**; viene avvolto da `SonarQubeScanner`. Nessuna modifica al suo codice → nessuna regressione, i suoi 26 test restano verdi.
+- Requirements: `R4.AC2`
 
 ## Data Models
 
