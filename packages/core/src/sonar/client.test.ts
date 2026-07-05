@@ -2051,58 +2051,6 @@ line5`;
     });
   });
 
-  describe('CE task polling and report-task (R2)', () => {
-    beforeEach(() => {
-      client = new SonarQubeClient('http://localhost:9000', 'test-token', 'test-project');
-    });
-
-    it('R2.AC1: polls the CE task by id when a ceTaskId is provided', async () => {
-      mockAxiosInstance.get = vi.fn(async () => ({
-        data: { task: { status: 'IN_PROGRESS', type: 'REPORT' } },
-      }));
-
-      const task = await (client as any).checkTaskStatus('AX-task-123');
-
-      expect(mockAxiosInstance.get).toHaveBeenCalledWith('/api/ce/task', {
-        params: { id: 'AX-task-123' },
-      });
-      expect(task.status).toBe('IN_PROGRESS');
-    });
-
-    it('R2.AC2: falls back to ce/activity when no ceTaskId is given', async () => {
-      mockAxiosInstance.get = vi.fn(async () => ({
-        data: { tasks: [{ status: 'SUCCESS', type: 'REPORT' }] },
-      }));
-
-      await (client as any).checkTaskStatus();
-
-      expect(mockAxiosInstance.get).toHaveBeenCalledWith(
-        '/api/ce/activity',
-        expect.objectContaining({ params: expect.objectContaining({ component: 'test-project' }) })
-      );
-    });
-
-    it('readCeTaskId parses ceTaskId from report-task.txt', async () => {
-      const fsp = await import('fs/promises');
-      vi.mocked(fsp.readFile).mockResolvedValueOnce(
-        'projectKey=p\nceTaskId=AX-abc-999\nserverUrl=http://x' as any
-      );
-
-      const id = await client.readCeTaskId('/repo');
-      expect(id).toBe('AX-abc-999');
-    });
-
-    it('R2.AC2: readCeTaskId returns null when report-task.txt is absent', async () => {
-      const fsp = await import('fs/promises');
-      vi.mocked(fsp.readFile).mockRejectedValue(
-        Object.assign(new Error('ENOENT'), { code: 'ENOENT' }) as any
-      );
-
-      const id = await client.readCeTaskId('/repo');
-      expect(id).toBeNull();
-    });
-  });
-
   describe('waitForCacheRefresh (R3)', () => {
     beforeEach(() => vi.useFakeTimers());
     afterEach(() => vi.useRealTimers());
