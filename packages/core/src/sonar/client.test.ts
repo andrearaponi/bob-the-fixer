@@ -38,6 +38,14 @@ vi.mock('child_process', () => ({
       callback(null, { stdout: 'Analysis completed', stderr: '' });
     }
   }),
+  // execFile is promisified at module load; grab the trailing callback arg so
+  // the mock works regardless of how many positional args are passed.
+  execFile: vi.fn((...args) => {
+    const callback = args[args.length - 1];
+    if (typeof callback === 'function') {
+      callback(null, { stdout: 'Analysis completed', stderr: '' });
+    }
+  }),
 }));
 
 describe('SonarQubeClient', () => {

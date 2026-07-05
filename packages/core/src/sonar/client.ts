@@ -1,6 +1,6 @@
 import axios, { AxiosInstance } from 'axios';
 import { SonarIssue, IssueFilter, SonarRuleDetails, SonarSecurityHotspot, SonarProjectMetrics, SonarSecurityHotspotDetails, SonarFilesWithDuplication, SonarDuplicationDetails, HotspotStatus, HotspotResolution, HotspotSeverity, SonarRuleSearchFilter, SonarRulesResponse, SonarComponentDetails, SonarQualityGateStatus, SonarLineCoverage, FileWithCoverage, FilesWithCoverageGaps, CoveragePriority } from './types';
-import { exec } from 'child_process';
+import { exec, execFile } from 'child_process';
 import { promisify } from 'util';
 import * as fs from 'fs/promises';
 import * as path from 'path';
@@ -10,6 +10,7 @@ import { PreScanValidator } from '../core/scanning/validation/index.js';
 import { selectScanner, ScannerType, buildMavenCommand, buildGradleCommand, getScannerDescription, ScannerOptions } from './scanner-selection.js';
 
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 export class SonarQubeClient {
   public readonly client: AxiosInstance;  // Make public for diagnostic access
@@ -70,9 +71,8 @@ export class SonarQubeClient {
       response => response,
       (error: Error) => {
         if ((error as any).response?.status === 401) {
-          const tokenInfo = token ? `Token present (${token.substring(0, 10)}...)` : 'NO TOKEN';
-          const envToken = process.env.SONAR_TOKEN;
-          const envInfo = envToken ? `Env token: ${envToken.substring(0, 10)}...` : 'NO ENV TOKEN';
+          const tokenInfo = token ? `Token present (${maskToken(token)})` : 'NO TOKEN';
+          const envInfo = process.env.SONAR_TOKEN ? 'Env token present' : 'NO ENV TOKEN';
 
           console.error('[SonarQubeClient] 401 Unauthorized - Authentication failed');
           console.error('[SonarQubeClient] Token status:', tokenInfo);
@@ -431,38 +431,38 @@ export class SonarQubeClient {
       const safePath = path.resolve(projectPath);
       const files = await fs.readdir(safePath);
       const solutionFile = files.find(f => f.endsWith('.sln'));
+      const token = this.getToken();
 
-
+      // Run via execFile with an argument array so no shell is involved. The
+      // .sln filename is attacker-controlled (it comes from the scanned repo),
+      // so it must never be interpolated into a shell command line. execFile
+      // passes each argument verbatim to `dotnet`, which closes the injection.
       const beginArgs = [
         'sonarscanner',
         'begin',
-        `/k:"${this.projectKey}"`,
-        `/d:sonar.host.url="${this.client.defaults.baseURL}"`,
-        `/d:sonar.login="${this.getToken()}"`,
-        `/d:sonar.verbose="true"`,
+        `/k:${this.projectKey}`,
+        `/d:sonar.host.url=${this.client.defaults.baseURL}`,
+        `/d:sonar.login=${token}`,
+        `/d:sonar.verbose=true`,
       ];
-      
       if (solutionFile) {
-        beginArgs.push(`/d:sonar.solution="${solutionFile}"`);
+        beginArgs.push(`/d:sonar.solution=${solutionFile}`);
       }
 
-      const beginCommand = `dotnet ${beginArgs.join(' ')}`;
-      
-      console.error(`Running .NET analysis step 1 (begin): ${beginCommand}`);
-      await execAsync(beginCommand, { cwd: safePath, maxBuffer: 10 * 1024 * 1024 });
+      console.error(`Running .NET analysis step 1 (begin) [token ${maskToken(token)}]`);
+      await execFileAsync('dotnet', beginArgs, { cwd: safePath, maxBuffer: 10 * 1024 * 1024 });
 
-      const buildCommand = solutionFile ? `dotnet build ${shellQuote(solutionFile)}` : 'dotnet build';
-      console.error(`Running .NET analysis step 2 (build): ${buildCommand}`);
-      await execAsync(buildCommand, { cwd: safePath, maxBuffer: 10 * 1024 * 1024 });
+      const buildArgs = solutionFile ? ['build', solutionFile] : ['build'];
+      console.error('Running .NET analysis step 2 (build)');
+      await execFileAsync('dotnet', buildArgs, { cwd: safePath, maxBuffer: 10 * 1024 * 1024 });
 
       const endArgs = [
         'sonarscanner',
         'end',
-        `/d:sonar.login="${this.getToken()}"`,
+        `/d:sonar.login=${token}`,
       ];
-      const endCommand = `dotnet ${endArgs.join(' ')}`;
-      console.error(`Running .NET analysis step 3 (end): ${endCommand}`);
-      await execAsync(endCommand, { cwd: safePath, maxBuffer: 10 * 1024 * 1024 });
+      console.error('Running .NET analysis step 3 (end)');
+      await execFileAsync('dotnet', endArgs, { cwd: safePath, maxBuffer: 10 * 1024 * 1024 });
 
       console.error('Successfully completed .NET analysis steps.');
 
@@ -470,8 +470,8 @@ export class SonarQubeClient {
       let errorMessage = ` .NET analysis failed: ${error.message}`;
       if (error.stdout) errorMessage += `\nSTDOUT: ${error.stdout}`;
       if (error.stderr) errorMessage += `\nSTDERR: ${error.stderr}`;
-      
-      if (error.message.includes('dotnet: not found') || error.message.includes('command not found')) {
+
+      if (error.message.includes('dotnet: not found') || error.message.includes('command not found') || error.code === 'ENOENT') {
         errorMessage += '\n\n- Solution: Install .NET SDK:\n' +
                       '  - Download from: https://dotnet.microsoft.com/download\n';
       }

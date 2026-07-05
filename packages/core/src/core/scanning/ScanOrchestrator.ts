@@ -448,7 +448,7 @@ export class ScanOrchestrator {
       message += '\n\nTOKEN DIAGNOSTICS:\n';
       message += `- Project Key: ${config.sonarProjectKey}\n`;
       message += `- SonarQube URL: ${config.sonarUrl}\n`;
-      message += `- Token: ${config.sonarToken.substring(0, 10)}...\n\n`;
+      message += `- Token: ${config.sonarToken ? `present (${config.sonarToken.length} chars)` : 'MISSING'}\n\n`;
       message += 'DEBUG STEPS:\n';
       message += '1. Wait 30 seconds and try again (project may need time to initialize)\n';
       message += '2. Check token permissions in SonarQube UI (Administration > Security > Users)\n';
