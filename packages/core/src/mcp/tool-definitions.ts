@@ -6,7 +6,7 @@
 export const toolDefinitions = [
   {
     name: 'sonar_auto_setup',
-    description: '[EN] Automatically setup SonarQube project for current directory with language detection and configuration',
+    description: 'Automatically setup SonarQube project for current directory with language detection and configuration',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -24,7 +24,7 @@ export const toolDefinitions = [
   },
   {
     name: 'sonar_project_discovery',
-    description: '[EN] Analyze current directory to discover project type, languages, framework and recommend configuration',
+    description: 'Analyze current directory to discover project type, languages, framework and recommend configuration',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -41,7 +41,7 @@ export const toolDefinitions = [
   },
   {
     name: 'sonar_scan_project',
-    description: '[EN] Scan project with SonarQube. USAGE PATTERN: For FIRST scan of a new project, use autoSetup: true. For ALL SUBSEQUENT scans (especially after making fixes), ALWAYS use projectPath: "/full/path/to/project" AND autoSetup: false.',
+    description: 'Scan project with SonarQube. USAGE PATTERN: For FIRST scan of a new project, use autoSetup: true. For ALL SUBSEQUENT scans (especially after making fixes), ALWAYS use projectPath: "/full/path/to/project" AND autoSetup: false.',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -68,7 +68,7 @@ export const toolDefinitions = [
   },
   {
     name: 'sonar_get_issue_details',
-    description: '[EN] Get detailed information about a specific SonarQube issue with rich context for intelligent fixing. Provides issue details, source code context, complete rule information from SonarQube, and file path for Claude to analyze and fix using Edit tools.',
+    description: 'Get detailed information about a specific SonarQube issue with rich context for intelligent fixing. Provides issue details, source code context, complete rule information from SonarQube, and file path for Claude to analyze and fix using Edit tools.',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -102,7 +102,7 @@ export const toolDefinitions = [
   },
   {
     name: 'sonar_generate_report',
-    description: '[EN] Generate a comprehensive quality report from SonarQube analysis',
+    description: 'Generate a comprehensive quality report from SonarQube analysis',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -116,7 +116,7 @@ export const toolDefinitions = [
   },
   {
     name: 'sonar_get_duplication_summary',
-    description: '[EN] Get ranked list of files with code duplication, sortable by density (%), absolute lines, or blocks. Shows priority indicators and refactoring recommendations.',
+    description: 'Get ranked list of files with code duplication, sortable by density (%), absolute lines, or blocks. Shows priority indicators and refactoring recommendations.',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -142,7 +142,7 @@ export const toolDefinitions = [
   },
   {
     name: 'sonar_get_duplication_details',
-    description: '[EN] Analyze specific file duplication with exact line ranges, affected files, and targeted refactoring recommendations for each duplicate block.',
+    description: 'Analyze specific file duplication with exact line ranges, affected files, and targeted refactoring recommendations for each duplicate block.',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -160,7 +160,7 @@ export const toolDefinitions = [
   },
   {
     name: 'sonar_get_technical_debt',
-    description: '[EN] Comprehensive technical debt analysis with time estimates, budget planning, ROI calculations, and prioritized action plan for bugs, vulnerabilities, and code smells.',
+    description: 'Comprehensive technical debt analysis with time estimates, budget planning, ROI calculations, and prioritized action plan for bugs, vulnerabilities, and code smells.',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -173,7 +173,7 @@ export const toolDefinitions = [
   },
   {
     name: 'sonar_get_quality_gate',
-    description: '[EN] Check quality gate status and get recommendations',
+    description: 'Check quality gate status and get recommendations',
     inputSchema: {
       type: 'object' as const,
       properties: {}
@@ -181,7 +181,7 @@ export const toolDefinitions = [
   },
   {
     name: 'sonar_config_manager',
-    description: '[EN] Manage local Bob the Fixer configuration (view, validate, reset)',
+    description: 'Manage local Bob the Fixer configuration (view, validate, reset)',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -200,7 +200,7 @@ export const toolDefinitions = [
   },
   {
     name: 'sonar_cleanup',
-    description: '[EN] Clean up unused SonarQube projects and expired tokens',
+    description: 'Clean up unused SonarQube projects and expired tokens',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -217,7 +217,7 @@ export const toolDefinitions = [
   },
   {
     name: 'sonar_diagnose_permissions',
-    description: '[EN] Diagnose token permissions and connectivity issues. Helpful for troubleshooting 403 errors.',
+    description: 'Diagnose token permissions and connectivity issues. Helpful for troubleshooting 403 errors.',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -230,7 +230,7 @@ export const toolDefinitions = [
   },
   {
     name: 'sonar_get_security_hotspots',
-    description: '[EN] Get all security hotspots for the project that require review',
+    description: 'Get all security hotspots for the project that require review',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -254,7 +254,7 @@ export const toolDefinitions = [
   },
   {
     name: 'sonar_get_security_hotspot_details',
-    description: '[EN] Get detailed information about a specific security hotspot with fix recommendations and context',
+    description: 'Get detailed information about a specific security hotspot with fix recommendations and context',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -268,7 +268,7 @@ export const toolDefinitions = [
   },
   {
     name: 'sonar_get_project_metrics',
-    description: '[EN] Get comprehensive project metrics including duplication percentage, quality ratings',
+    description: 'Get comprehensive project metrics including duplication percentage, quality ratings',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -282,7 +282,7 @@ export const toolDefinitions = [
   },
   {
     name: 'sonar_analyze_patterns',
-    description: '[EN] Intelligently analyze and group SonarQube issues to identify patterns, correlations, and provide actionable insights for automated fixing. Groups issues by selected strategy and provides fixability scoring, time estimates, and impact analysis.',
+    description: 'Intelligently analyze and group SonarQube issues to identify patterns, correlations, and provide actionable insights for automated fixing. Groups issues by selected strategy and provides fixability scoring, time estimates, and impact analysis.',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -304,7 +304,7 @@ export const toolDefinitions = [
   },
   {
     name: 'sonar_delete_project',
-    description: '[EN] Delete a SonarQube project and revoke associated tokens. WARNING: This operation cannot be undone.',
+    description: 'Delete a SonarQube project and revoke associated tokens. WARNING: This operation cannot be undone.',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -322,7 +322,7 @@ export const toolDefinitions = [
   },
   {
     name: 'sonar_link_existing_project',
-    description: '[EN] Link an existing SonarQube project to the current directory. Creates local bobthefixer.env configuration file.',
+    description: 'Link an existing SonarQube project to the current directory. Creates local bobthefixer.env configuration file.',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -348,7 +348,7 @@ export const toolDefinitions = [
   },
   {
     name: 'sonar_get_coverage_gaps',
-    description: '[EN] Analyze code coverage gaps for a specific file. Returns uncovered code blocks and partial branch coverage with code snippets, optimized for LLM-assisted test generation.',
+    description: 'Analyze code coverage gaps for a specific file. Returns uncovered code blocks and partial branch coverage with code snippets, optimized for LLM-assisted test generation.',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -372,7 +372,7 @@ export const toolDefinitions = [
   },
   {
     name: 'sonar_get_uncovered_files',
-    description: '[EN] Get list of files with coverage below target threshold. Returns prioritized list (critical/high/medium/low) based on coverage percentage. Handles projects without coverage data by providing setup instructions. Use this to identify files that need tests.',
+    description: 'Get list of files with coverage below target threshold. Returns prioritized list (critical/high/medium/low) based on coverage percentage. Handles projects without coverage data by providing setup instructions. Use this to identify files that need tests.',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -402,7 +402,7 @@ export const toolDefinitions = [
   },
   {
     name: 'sonar_generate_config',
-    description: '[EN] Generate sonar-project.properties file for SonarQube scanning. Use this after sonar_scan_project fails with configuration errors (sources not found, module errors, etc.) to create a proper configuration based on project structure analysis.',
+    description: 'Generate sonar-project.properties file for SonarQube scanning. Use this after sonar_scan_project fails with configuration errors (sources not found, module errors, etc.) to create a proper configuration based on project structure analysis.',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -485,7 +485,7 @@ export const toolDefinitions = [
   },
   {
     name: 'trivy_scan_dependencies',
-    description: '[EN] Scan project dependencies for known vulnerabilities (SCA) using Trivy. Returns fix-ready findings: package, installed -> fixed version, severity and CVE. Run trivy_check_installation first if unsure Trivy is installed.',
+    description: 'Scan project dependencies for known vulnerabilities (SCA) using Trivy. Returns fix-ready findings: package, installed -> fixed version, severity and CVE. Run trivy_check_installation first if unsure Trivy is installed.',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -498,7 +498,7 @@ export const toolDefinitions = [
   },
   {
     name: 'trivy_check_installation',
-    description: '[EN] Check whether Trivy is installed and available on PATH and report its version. Use this before trivy_scan_dependencies if a scan fails.',
+    description: 'Check whether Trivy is installed and available on PATH and report its version. Use this before trivy_scan_dependencies if a scan fails.',
     inputSchema: {
       type: 'object' as const,
       properties: {}

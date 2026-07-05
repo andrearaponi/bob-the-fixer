@@ -35,7 +35,7 @@ export class DiagnosticsService {
     const config = await this.projectManager.getOrCreateConfig();
     const projectContext = await this.projectManager.analyzeProject();
 
-    let report = 'SONARGUARD PERMISSION DIAGNOSTICS\n\n';
+    let report = 'BOB THE FIXER PERMISSION DIAGNOSTICS\n\n';
     report += this.buildConfigSection(config);
     report += await this.testConnectivity();
     report += await this.testTokenPermissions(config, projectContext);

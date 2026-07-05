@@ -144,7 +144,7 @@ export class ConfigManager {
    * Format configuration info for display
    */
   static formatConfigInfo(info: ConfigInfo): string {
-    let text = `SONARGUARD CONFIGURATION\n\n`;
+    let text = `BOB THE FIXER CONFIGURATION\n\n`;
     text += `SonarQube URL: ${info.sonarUrl}\n`;
     text += `Project Key: ${info.projectKey}\n`;
     text += `Token: ${info.token}\n`;

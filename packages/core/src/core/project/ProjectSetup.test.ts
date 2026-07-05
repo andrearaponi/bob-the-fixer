@@ -216,7 +216,7 @@ describe('ProjectSetup', () => {
 
       const formatted = ProjectSetup.formatSetupResult(result);
 
-      expect(formatted).toContain('SONARGUARD ALREADY CONFIGURED');
+      expect(formatted).toContain('BOB THE FIXER ALREADY CONFIGURED');
       expect(formatted).toContain('test-project');
       expect(formatted).toContain('typescript');
       expect(formatted).toContain('react');
@@ -239,7 +239,7 @@ describe('ProjectSetup', () => {
 
       const formatted = ProjectSetup.formatSetupResult(result);
 
-      expect(formatted).toContain('BOB THE BUILDER AUTO-SETUP COMPLETE!');
+      expect(formatted).toContain('BOB THE FIXER AUTO-SETUP COMPLETE!');
       expect(formatted).toContain('Test Project');
       expect(formatted).toContain('test-project');
       expect(formatted).toContain('typescript, javascript');

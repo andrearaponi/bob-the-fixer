@@ -160,7 +160,7 @@ export class ProjectSetup {
    */
   static formatSetupResult(result: SetupResult): string {
     if (!result.isNewSetup) {
-      return `SONARGUARD ALREADY CONFIGURED\n\n` +
+      return `BOB THE FIXER ALREADY CONFIGURED\n\n` +
              `Project: ${result.projectKey}\n` +
              `Languages: ${result.languages.join(', ')}\n` +
              `Framework: ${result.framework ?? 'Generic'}\n` +
@@ -168,7 +168,7 @@ export class ProjectSetup {
              `Use force: true to recreate the configuration.`;
     }
 
-    return `BOB THE BUILDER AUTO-SETUP COMPLETE!\n\n` +
+    return `BOB THE FIXER AUTO-SETUP COMPLETE!\n\n` +
            `PROJECT DETAILS:\n` +
            `Name: ${result.projectName}\n` +
            `Key: ${result.projectKey}\n` +

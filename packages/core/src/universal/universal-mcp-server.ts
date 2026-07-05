@@ -45,7 +45,7 @@ export interface ServerConfig {
 const APP_VERSION = pkg.version;
 const GITHUB_REPOSITORY = 'andrearaponi/bob-the-fixer';
 
-class UniversalBobTheBuilderMCPServer {
+class UniversalBobTheFixerMCPServer {
   private readonly server: Server;
   private readonly rateLimiter: RateLimiter;
   private readonly logger: StructuredLogger = getLogger();
@@ -430,4 +430,4 @@ class UniversalBobTheBuilderMCPServer {
   }
 }
 
-export { UniversalBobTheBuilderMCPServer as UniversalBobTheFixerMCPServer };
+export { UniversalBobTheFixerMCPServer };

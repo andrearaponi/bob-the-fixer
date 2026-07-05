@@ -262,7 +262,7 @@ describe('ConfigManager', () => {
 
       const formatted = ConfigManager.formatConfigInfo(info);
 
-      expect(formatted).toContain('SONARGUARD CONFIGURATION');
+      expect(formatted).toContain('BOB THE FIXER CONFIGURATION');
       expect(formatted).toContain('http://localhost:9000');
       expect(formatted).toContain('test-project');
       expect(formatted).toContain('***wxyz');
@@ -282,7 +282,7 @@ describe('ConfigManager', () => {
 
       const formatted = ConfigManager.formatConfigInfo(info);
 
-      expect(formatted).toContain('SONARGUARD CONFIGURATION');
+      expect(formatted).toContain('BOB THE FIXER CONFIGURATION');
       expect(formatted).not.toContain('Language:');
       expect(formatted).not.toContain('Framework:');
     });

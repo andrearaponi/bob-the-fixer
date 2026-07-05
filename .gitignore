@@ -36,6 +36,9 @@ coverage/
 *.lcov
 .nyc_output
 
+# Vitest UI report (build artifact)
+packages/core/html/
+
 # SonarQube
 .sonarqube/
 .sonar/

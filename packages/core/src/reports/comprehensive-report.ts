@@ -71,7 +71,7 @@ export class TextReportFormatter implements ReportFormatter {
   }
 
   private buildHeader(data: ReportData): string {
-    let section = `SONARGUARD COMPREHENSIVE QUALITY REPORT\n\n`;
+    let section = `BOB THE FIXER COMPREHENSIVE QUALITY REPORT\n\n`;
     section += `Generated: ${new Date().toLocaleString()}\n`;
     section += `Project: ${data.config.sonarProjectKey}\n`;
     section += `Component: ${data.projectMetrics.component.name}\n\n`;

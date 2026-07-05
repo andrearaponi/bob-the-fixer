@@ -114,7 +114,7 @@ describe('DiagnosticsService', () => {
       const options: DiagnosticsOptions = { verbose: true };
       const result = await diagnosticsService.diagnose(options);
 
-      expect(result).toContain('SONARGUARD PERMISSION DIAGNOSTICS');
+      expect(result).toContain('BOB THE FIXER PERMISSION DIAGNOSTICS');
       expect(result).toContain('CONFIGURATION');
       expect(result).toContain('http://localhost:9000');
       expect(result).toContain('test-project');
