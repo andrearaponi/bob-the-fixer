@@ -15,3 +15,8 @@ Review this file before non-trivial work when the current request matches past m
 - Lesson: Gli AC che mescolano 'ritorna errore' e 'lo stato/health riflette la condizione' sono due comportamenti osservabili distinti e vanno separati anche se riguardano la stessa causa (Trivy non installato).
 - Guardrail: In fase di drafting, per ogni condizione di indisponibilità scrivere DUE AC: uno per la risposta all'azione (IF/THEN errore) e uno per lo stato interrogabile (WHEN checkHealth ... unavailable).
 
+### 2026-07-05T10:14:13Z | repo-hygiene-cleanup | design
+- Trigger: Validazione design fallita: mancavano le sezioni obbligatorie ## Architecture e ## Simplicity And Elegance Review, omesse perche' lo spec e' piccolo/cosmetico.
+- Lesson: Anche gli spec triviali devono includere l'intero set di sezioni richieste dal template Walden; 'e' piccolo' non esime dalla struttura che il validator impone.
+- Guardrail: Prima di aprire la review del design, includere sempre TUTTE le sezioni del template (Overview, Architecture, Options Considered, Simplicity And Elegance Review, Components, ... Verification Plan, Requirement Coverage), anche se brevi.
+
