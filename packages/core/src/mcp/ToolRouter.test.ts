@@ -18,7 +18,7 @@ describe('ToolRouter (single wiring table)', () => {
     expect(tools).toContain('trivy_check_installation');
     expect(tools).toHaveLength(Object.keys(toolRoutes).length);
     // 21 sonar tools + 2 trivy (SCA) tools.
-    expect(tools).toHaveLength(23);
+    expect(tools).toHaveLength(24);
   });
 
   it('reports tool existence', () => {

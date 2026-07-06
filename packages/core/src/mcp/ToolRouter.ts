@@ -29,6 +29,7 @@ import { handleGetUncoveredFiles } from './handlers/uncovered-files.handler.js';
 import { handleGenerateConfig } from './handlers/generate-config.handler.js';
 import { handleTrivyScanDependencies } from './handlers/trivy-scan.handler.js';
 import { handleTrivyCheckInstallation } from './handlers/trivy-check.handler.js';
+import { handleTrivyGenerateSbom } from './handlers/trivy-sbom.handler.js';
 
 /**
  * Handler function signature
@@ -61,7 +62,8 @@ export const toolRoutes: Record<string, ToolHandler> = {
   sonar_get_uncovered_files: handleGetUncoveredFiles,
   sonar_generate_config: handleGenerateConfig,
   trivy_scan_dependencies: handleTrivyScanDependencies,
-  trivy_check_installation: handleTrivyCheckInstallation
+  trivy_check_installation: handleTrivyCheckInstallation,
+  trivy_generate_sbom: handleTrivyGenerateSbom
 };
 
 /**

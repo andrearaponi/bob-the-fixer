@@ -17,7 +17,7 @@ import { classifyReachability } from './reachability.js';
 
 const execFileAsync = promisify(execFile);
 
-const INSTALL_HINT =
+export const INSTALL_HINT =
   'Trivy is not installed or not found on PATH. Install it: https://trivy.dev/docs/getting-started/installation/';
 
 export class TrivyScanner extends BaseScannerImpl {

@@ -503,5 +503,27 @@ export const toolDefinitions = [
       type: 'object' as const,
       properties: {}
     }
+  },
+  {
+    name: 'trivy_generate_sbom',
+    description: 'Generate a Software Bill of Materials (SBOM) of the project dependencies with Trivy, written to a file. Returns a summary (format, component count, output path). Use format "cyclonedx" (default) or "spdx-json".',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        projectPath: {
+          type: 'string' as const,
+          description: 'Project directory to inventory (defaults to current working directory)'
+        },
+        format: {
+          type: 'string' as const,
+          enum: ['cyclonedx', 'spdx-json'],
+          description: 'SBOM format (default: cyclonedx)'
+        },
+        outputPath: {
+          type: 'string' as const,
+          description: 'Where to write the SBOM file (default: sbom.<format>.json in the project directory)'
+        }
+      }
+    }
   }
 ];
