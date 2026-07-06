@@ -123,6 +123,10 @@ export interface IIssue {
     directDependency?: string;
     /** Relationship of the vulnerable package to the project. */
     relationship?: 'direct' | 'indirect' | 'root' | 'unknown';
+    /** Package ecosystem (Trivy result Type): 'npm' | 'pom' | 'gomod' | … */
+    ecosystem?: string;
+    /** Import-presence reachability heuristic (JS/TS ecosystems only). */
+    reachability?: 'imported' | 'not-imported' | 'unknown';
   };
 
   /** Raw data from the source scanner */

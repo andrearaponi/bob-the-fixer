@@ -12,6 +12,8 @@ import { promisify } from 'util';
 import { ScannerHealthStatus, BaseScannerImpl } from '../scanners/IScanner.js';
 import { IScanResult, ScanParams } from '../scanners/IScanResult.js';
 import { TrivyResultParser } from './trivy-parser.js';
+import { collectImportedPackages } from './source-imports.js';
+import { classifyReachability } from './reachability.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -46,13 +48,22 @@ export class TrivyScanner extends BaseScannerImpl {
       throw new Error(`Trivy scan failed: ${detail}`);
     }
 
-    return this.parser.parse(stdout, {
+    const result = this.parser.parse(stdout, {
       projectPath: params.projectPath,
       projectKey: params.projectKey,
       projectName: params.projectName,
       scanId: this.generateScanId(),
       startedAt,
     });
+
+    // Enrich each finding with an import-presence reachability signal.
+    const imported = await collectImportedPackages(params.projectPath);
+    for (const issue of result.issues) {
+      if (issue.dependency) {
+        issue.dependency.reachability = classifyReachability(issue.dependency, imported);
+      }
+    }
+    return result;
   }
 
   async checkHealth(): Promise<ScannerHealthStatus> {

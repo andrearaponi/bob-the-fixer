@@ -69,7 +69,7 @@ export class TrivyResultParser {
           ? new DependencyGraph(result.Packages)
           : undefined;
       for (const vuln of result.Vulnerabilities ?? []) {
-        issues.push(this.mapVulnerability(vuln, target, graph));
+        issues.push(this.mapVulnerability(vuln, target, graph, result.Type));
       }
     }
 
@@ -92,13 +92,19 @@ export class TrivyResultParser {
     };
   }
 
-  private mapVulnerability(vuln: TrivyVulnerability, target: string, graph?: DependencyGraph): IIssue {
+  private mapVulnerability(
+    vuln: TrivyVulnerability,
+    target: string,
+    graph?: DependencyGraph,
+    ecosystem?: string
+  ): IIssue {
     const message =
       vuln.Title || (vuln.Description ? vuln.Description.split('\n')[0] : vuln.VulnerabilityID);
     const dependency: IIssue['dependency'] = {
       packageName: vuln.PkgName,
       installedVersion: vuln.InstalledVersion,
     };
+    if (ecosystem) dependency.ecosystem = ecosystem;
     if (graph && vuln.PkgID) {
       const resolved = graph.pathTo(vuln.PkgID);
       dependency.path = resolved.path;

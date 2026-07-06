@@ -53,6 +53,27 @@ describe('formatTrivyReport', () => {
     expect(text).toContain('bump express@4');
   });
 
+  it('R3.AC2: renders a reachability marker (imported vs dormant)', () => {
+    const json = JSON.stringify({
+      Results: [
+        {
+          Target: 'package-lock.json',
+          Type: 'npm',
+          Vulnerabilities: [
+            { VulnerabilityID: 'CVE-R', PkgName: 'axios', InstalledVersion: '1', FixedVersion: '1.1', Severity: 'HIGH' },
+          ],
+        },
+      ],
+    });
+    const result = parser.parse(json, params);
+
+    result.issues[0].dependency!.reachability = 'imported';
+    expect(formatTrivyReport(result)).toContain('reachable');
+
+    result.issues[0].dependency!.reachability = 'not-imported';
+    expect(formatTrivyReport(result)).toContain('dormant');
+  });
+
   it('R3.AC2: does not render a Via line for a direct dependency', () => {
     const json = JSON.stringify({
       Results: [

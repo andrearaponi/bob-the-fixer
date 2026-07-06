@@ -33,7 +33,7 @@ describe('TrivyResultParser', () => {
     expect(lodash.source).toBe('trivy');
     expect(lodash.ruleId).toBe('CVE-2023-12345'); // R2.AC3
     expect(lodash.severity).toBe('HIGH');
-    expect(lodash.dependency).toEqual({ packageName: 'lodash', installedVersion: '4.17.20' }); // R1.AC3
+    expect(lodash.dependency).toMatchObject({ packageName: 'lodash', installedVersion: '4.17.20' }); // R1.AC3
     expect(lodash.remediation?.fixedVersion).toBe('4.17.21'); // R2.AC1
     expect(lodash.location?.filePath).toBe('package-lock.json');
     expect(lodash.tags).toEqual(['CWE-1321']);

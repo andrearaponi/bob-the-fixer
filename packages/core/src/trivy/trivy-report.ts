@@ -67,6 +67,11 @@ function formatIssue(issue: IIssue): string {
     `${icon} ${issue.severity}  ${pkg} ${versionSpan}`,
     `   ${issue.ruleId}: ${issue.message}`,
   ];
+  if (dep?.reachability === 'imported') {
+    out.push('   Reach: imported in source (reachable — prioritise)');
+  } else if (dep?.reachability === 'not-imported') {
+    out.push('   Reach: not imported in source (likely dormant — deprioritise)');
+  }
   if (transitive && dep?.path && direct) {
     const from = dep.path.indexOf(direct);
     const chain = from >= 0 ? dep.path.slice(from) : dep.path;
