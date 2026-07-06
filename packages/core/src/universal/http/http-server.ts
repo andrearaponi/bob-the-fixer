@@ -4,7 +4,6 @@ import { rateLimit } from 'express-rate-limit';
 import { Server } from 'http';
 import { SessionManager } from './session-manager.js';
 import { ProjectManager } from '../project-manager.js';
-import { SonarQubeClient } from '../../sonar/client.js';
 import { IProjectManager } from '../../infrastructure/interfaces/index.js';
 
 export interface HTTPServerConfig {
@@ -89,47 +88,6 @@ export class MCPHTTPServer {
       });
     });
 
-    // Get SonarQube issues endpoint
-    this.app.get('/api/issues', async (req: Request, res: Response) => {
-      try {
-        const config = await this.projectManager.getOrCreateConfig();
-
-        if (!config) {
-          return res.status(404).json({
-            error: 'No active project found',
-            message: 'Please configure a SonarQube project first',
-            fallback: true,
-            issues: this.getDemoIssues()
-          });
-        }
-
-        const client = new SonarQubeClient(
-          config.sonarUrl,
-          config.sonarToken,
-          config.sonarProjectKey
-        );
-
-        const issues = await client.getIssues({
-          resolved: false
-        });
-
-        res.json({
-          success: true,
-          count: issues.length,
-          issues: issues.slice(0, 100) // Limit to 100 issues for performance
-        });
-      } catch (error: any) {
-        console.error('Error fetching issues:', error);
-        res.status(500).json({
-          error: 'Failed to fetch issues',
-          message: error.message,
-          // Provide fallback demo data if SonarQube is not configured
-          fallback: true,
-          issues: this.getDemoIssues()
-        });
-      }
-    });
-
     // MCP endpoints will be set up by the transport
     // Placeholder for now
     this.app.post('/mcp/v1/messages', (req: Request, res: Response) => {
@@ -137,38 +95,6 @@ export class MCPHTTPServer {
         error: 'MCP transport not initialized'
       });
     });
-  }
-
-  private getDemoIssues() {
-    return [
-      {
-        key: 'demo:1',
-        rule: 'java:S1192',
-        severity: 'MINOR',
-        message: 'Define a constant instead of duplicating this literal',
-        type: 'CODE_SMELL',
-        line: 12,
-        component: 'src/main/java/OrderService.java'
-      },
-      {
-        key: 'demo:2',
-        rule: 'java:S2259',
-        severity: 'MAJOR',
-        message: 'A "NullPointerException" could be thrown',
-        type: 'BUG',
-        line: 13,
-        component: 'src/main/java/OrderService.java'
-      },
-      {
-        key: 'demo:3',
-        rule: 'java:S3740',
-        severity: 'MAJOR',
-        message: 'Provide the parametrized type for this generic',
-        type: 'CODE_SMELL',
-        line: 10,
-        component: 'src/main/java/OrderService.java'
-      }
-    ];
   }
 
   async start(): Promise<void> {
