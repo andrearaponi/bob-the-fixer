@@ -51,18 +51,26 @@ export function formatTrivyReport(result: IScanResult): string {
 }
 
 function formatIssue(issue: IIssue): string {
-  const pkg = issue.dependency?.packageName ?? 'unknown';
-  const installed = issue.dependency?.installedVersion ?? '?';
+  const dep = issue.dependency;
+  const pkg = dep?.packageName ?? 'unknown';
+  const installed = dep?.installedVersion ?? '?';
   const fixed = issue.remediation?.fixedVersion;
   const versionSpan = fixed ? `${installed} → ${fixed}` : `${installed} (no fix available yet)`;
   const icon = SEVERITY_ICON[issue.severity];
+  const transitive = dep?.relationship === 'indirect' && !!dep.path && dep.path.length > 1;
 
   const out = [
     `${icon} ${issue.severity}  ${pkg} ${versionSpan}`,
     `   ${issue.ruleId}: ${issue.message}`,
   ];
+  if (transitive && dep?.path) {
+    out.push(`   Via: ${dep.path.join(' → ')}  (transitive)`);
+  }
   if (fixed) {
     out.push(`   Fix: update ${pkg} to ${fixed}`);
+    if (transitive && dep?.directDependency) {
+      out.push(`        transitive — bump ${dep.directDependency} or add an override for ${pkg}`);
+    }
   } else {
     out.push(`   Fix: no fixed version published yet — assess mitigation or pin/replace`);
   }

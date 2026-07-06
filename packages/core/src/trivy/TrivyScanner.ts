@@ -29,7 +29,7 @@ export class TrivyScanner extends BaseScannerImpl {
   async scan(params: ScanParams): Promise<IScanResult> {
     const startedAt = new Date().toISOString();
     // No --exit-code: finding vulnerabilities is a successful scan, not an error.
-    const args = ['fs', '--quiet', '--format', 'json', '--scanners', 'vuln', params.projectPath];
+    const args = ['fs', '--quiet', '--list-all-pkgs', '--format', 'json', '--scanners', 'vuln', params.projectPath];
 
     let stdout: string;
     try {

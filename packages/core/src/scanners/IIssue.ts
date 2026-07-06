@@ -117,6 +117,12 @@ export interface IIssue {
     packageName: string;
     installedVersion: string;
     vulnerableVersions?: string;
+    /** Dependency chain from a direct dep to the vulnerable package: [direct@version, …, vulnerable@version]. */
+    path?: string[];
+    /** Entry-point direct dependency (name@version) that pulls in the vulnerable package. */
+    directDependency?: string;
+    /** Relationship of the vulnerable package to the project. */
+    relationship?: 'direct' | 'indirect' | 'root' | 'unknown';
   };
 
   /** Raw data from the source scanner */

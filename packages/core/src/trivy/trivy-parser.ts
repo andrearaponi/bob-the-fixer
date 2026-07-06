@@ -8,11 +8,13 @@
 
 import { IIssue, IssueSeverity, IssueSummary } from '../scanners/IIssue.js';
 import { IScanResult, ScanParams } from '../scanners/IScanResult.js';
+import { DependencyGraph, TrivyPackage } from './dependency-graph.js';
 
 /** Subset of the Trivy JSON schema we rely on (other fields may be present). */
 interface TrivyVulnerability {
   VulnerabilityID: string;
   PkgName: string;
+  PkgID?: string;
   InstalledVersion: string;
   FixedVersion?: string;
   Severity?: string;
@@ -27,6 +29,7 @@ interface TrivyResult {
   Class?: string;
   Type?: string;
   Vulnerabilities?: TrivyVulnerability[] | null;
+  Packages?: TrivyPackage[] | null;
 }
 
 interface TrivyReport {
@@ -61,8 +64,12 @@ export class TrivyResultParser {
     const issues: IIssue[] = [];
     for (const result of report.Results ?? []) {
       const target = result.Target ?? '';
+      const graph =
+        result.Packages && result.Packages.length > 0
+          ? new DependencyGraph(result.Packages)
+          : undefined;
       for (const vuln of result.Vulnerabilities ?? []) {
-        issues.push(this.mapVulnerability(vuln, target));
+        issues.push(this.mapVulnerability(vuln, target, graph));
       }
     }
 
@@ -85,9 +92,19 @@ export class TrivyResultParser {
     };
   }
 
-  private mapVulnerability(vuln: TrivyVulnerability, target: string): IIssue {
+  private mapVulnerability(vuln: TrivyVulnerability, target: string, graph?: DependencyGraph): IIssue {
     const message =
       vuln.Title || (vuln.Description ? vuln.Description.split('\n')[0] : vuln.VulnerabilityID);
+    const dependency: IIssue['dependency'] = {
+      packageName: vuln.PkgName,
+      installedVersion: vuln.InstalledVersion,
+    };
+    if (graph && vuln.PkgID) {
+      const resolved = graph.pathTo(vuln.PkgID);
+      dependency.path = resolved.path;
+      dependency.directDependency = resolved.directDependency;
+      dependency.relationship = resolved.relationship;
+    }
     return {
       id: `${vuln.VulnerabilityID}:${vuln.PkgName}`,
       source: 'trivy',
@@ -104,10 +121,7 @@ export class TrivyResultParser {
         vuln.FixedVersion || vuln.PrimaryURL
           ? { fixedVersion: vuln.FixedVersion, referenceUrl: vuln.PrimaryURL }
           : undefined,
-      dependency: {
-        packageName: vuln.PkgName,
-        installedVersion: vuln.InstalledVersion,
-      },
+      dependency,
       rawData: vuln,
     };
   }
