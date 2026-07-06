@@ -31,6 +31,7 @@ export interface DependencyPath {
 export class DependencyGraph {
   private readonly byId = new Map<string, TrivyPackage>();
   private readonly sources: string[] = []; // direct + root package IDs
+  private readonly hasIncoming = new Set<string>(); // ids that something DependsOn
 
   constructor(packages: TrivyPackage[]) {
     for (const pkg of packages) {
@@ -40,7 +41,18 @@ export class DependencyGraph {
       if (pkg.Relationship === 'direct' || pkg.Relationship === 'root') {
         this.sources.push(pkg.ID);
       }
+      for (const dep of pkg.DependsOn ?? []) this.hasIncoming.add(dep);
     }
+  }
+
+  /**
+   * Entry-point direct dependency = the first node in the path that is actually
+   * depended-upon (has an incoming edge). This skips the manifest/project node
+   * (root, or a workspace package Trivy labels `direct` but that nothing depends
+   * on), so we point at the real dependency to bump — not the project itself.
+   */
+  private firstRealDependency(idPath: string[]): string | undefined {
+    return idPath.find((id) => this.hasIncoming.has(id));
   }
 
   private label(id: string): string {
@@ -61,7 +73,11 @@ export class DependencyGraph {
 
     if (target.Relationship === 'direct') {
       const label = this.label(pkgId);
-      return { path: [label], directDependency: label, relationship: 'direct' };
+      return {
+        path: [label],
+        directDependency: this.hasIncoming.has(pkgId) ? label : undefined,
+        relationship: 'direct',
+      };
     }
     if (target.Relationship === 'root') {
       return { path: [this.label(pkgId)], relationship: 'root' };
@@ -72,10 +88,10 @@ export class DependencyGraph {
     if (!idPath) {
       return { path: [this.label(pkgId)], relationship: 'unknown' };
     }
-    const firstNonRoot = idPath.find((id) => this.byId.get(id)?.Relationship !== 'root');
+    const firstReal = this.firstRealDependency(idPath);
     return {
       path: idPath.map((id) => this.label(id)),
-      directDependency: firstNonRoot ? this.label(firstNonRoot) : undefined,
+      directDependency: firstReal ? this.label(firstReal) : undefined,
       relationship: 'indirect',
     };
   }

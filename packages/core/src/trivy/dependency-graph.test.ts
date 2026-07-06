@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { DependencyGraph, TrivyPackage } from './dependency-graph.js';
 
 const pkgs: TrivyPackage[] = [
-  { ID: 'root@1', Name: 'app', Version: '1', Relationship: 'root', DependsOn: ['express@4'] },
+  { ID: 'root@1', Name: 'app', Version: '1', Relationship: 'root', DependsOn: ['express@4', 'lodash@4'] },
   { ID: 'express@4', Name: 'express', Version: '4', Relationship: 'direct', DependsOn: ['body-parser@1'] },
   { ID: 'body-parser@1', Name: 'body-parser', Version: '1', Relationship: 'indirect', DependsOn: ['qs@6'] },
   { ID: 'qs@6', Name: 'qs', Version: '6', Relationship: 'indirect', DependsOn: [] },
@@ -45,6 +45,7 @@ describe('DependencyGraph', () => {
 
   it('R2.AC1: picks the shortest path when reachable from two directs', () => {
     const multi: TrivyPackage[] = [
+      { ID: 'root@1', Name: 'app', Version: '1', Relationship: 'root', DependsOn: ['x@1', 'y@1'] },
       { ID: 'x@1', Name: 'x', Version: '1', Relationship: 'direct', DependsOn: ['mid@1'] },
       { ID: 'y@1', Name: 'y', Version: '1', Relationship: 'direct', DependsOn: ['target@1'] }, // 1 hop
       { ID: 'mid@1', Name: 'mid', Version: '1', Relationship: 'indirect', DependsOn: ['target@1'] },
@@ -53,5 +54,18 @@ describe('DependencyGraph', () => {
     const r = new DependencyGraph(multi).pathTo('target@1');
     expect(r.path).toEqual(['y@1', 'target@1']);
     expect(r.directDependency).toBe('y@1');
+  });
+
+  it('workspace: a project package Trivy labels "direct" is not the dependency to bump', () => {
+    // In a monorepo Trivy marks the workspace package "direct" (nothing depends
+    // on it); the real dependency is its child, labeled "indirect".
+    const ws: TrivyPackage[] = [
+      { ID: 'core@1', Name: '@scope/core', Version: '1', Relationship: 'direct', DependsOn: ['sdk@1'] },
+      { ID: 'sdk@1', Name: 'sdk', Version: '1', Relationship: 'indirect', DependsOn: ['hono@1'] },
+      { ID: 'hono@1', Name: 'hono', Version: '1', Relationship: 'indirect', DependsOn: [] },
+    ];
+    const r = new DependencyGraph(ws).pathTo('hono@1');
+    expect(r.path).toEqual(['@scope/core@1', 'sdk@1', 'hono@1']);
+    expect(r.directDependency).toBe('sdk@1'); // the real dep, NOT @scope/core
   });
 });

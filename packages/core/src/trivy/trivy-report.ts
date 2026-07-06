@@ -57,19 +57,25 @@ function formatIssue(issue: IIssue): string {
   const fixed = issue.remediation?.fixedVersion;
   const versionSpan = fixed ? `${installed} → ${fixed}` : `${installed} (no fix available yet)`;
   const icon = SEVERITY_ICON[issue.severity];
-  const transitive = dep?.relationship === 'indirect' && !!dep.path && dep.path.length > 1;
+  const direct = dep?.directDependency;
+  const vulnLabel = dep?.path?.[dep.path.length - 1];
+  // Transitive only when the vulnerable package is reached *through* a different
+  // direct dependency (not when it is the direct dependency itself).
+  const transitive = !!direct && !!vulnLabel && direct !== vulnLabel;
 
   const out = [
     `${icon} ${issue.severity}  ${pkg} ${versionSpan}`,
     `   ${issue.ruleId}: ${issue.message}`,
   ];
-  if (transitive && dep?.path) {
-    out.push(`   Via: ${dep.path.join(' → ')}  (transitive)`);
+  if (transitive && dep?.path && direct) {
+    const from = dep.path.indexOf(direct);
+    const chain = from >= 0 ? dep.path.slice(from) : dep.path;
+    out.push(`   Via: ${chain.join(' → ')}  (transitive)`);
   }
   if (fixed) {
     out.push(`   Fix: update ${pkg} to ${fixed}`);
-    if (transitive && dep?.directDependency) {
-      out.push(`        transitive — bump ${dep.directDependency} or add an override for ${pkg}`);
+    if (transitive && direct) {
+      out.push(`        transitive — bump ${direct} or add an override for ${pkg}`);
     }
   } else {
     out.push(`   Fix: no fixed version published yet — assess mitigation or pin/replace`);
