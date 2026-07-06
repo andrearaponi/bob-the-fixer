@@ -12,7 +12,7 @@ jobs:
 
     strategy:
       matrix:
-        node-version: [18.x, 20.x]
+        node-version: [20.x, 22.x]
 
     steps:
     - name: Checkout code
@@ -25,21 +25,21 @@ jobs:
         cache: 'npm'
 
     - name: Install dependencies
-      run: npm install
+      run: npm ci
 
     - name: Build project
       run: npm run build
 
     - name: Run tests
-      if: matrix.node-version == '18.x'
+      if: matrix.node-version == '20.x'
       run: cd packages/core && npm test
 
     - name: Run tests with coverage
-      if: matrix.node-version == '20.x'
+      if: matrix.node-version == '22.x'
       run: cd packages/core && npm run test:coverage
 
     - name: Upload coverage
-      if: matrix.node-version == '20.x'
+      if: matrix.node-version == '22.x'
       uses: codecov/codecov-action@v5
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
@@ -47,3 +47,24 @@ jobs:
         flags: unittests
         name: codecov-umbrella
         fail_ci_if_error: false
+
+  security:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    # Dependency security gate: fail the build on fixable HIGH/CRITICAL
+    # vulnerabilities in real dependencies. The intentionally-vulnerable test
+    # fixtures under packages/core/tests are excluded.
+    - name: Trivy dependency security gate
+      uses: aquasecurity/trivy-action@0.28.0
+      with:
+        scan-type: fs
+        scan-ref: .
+        scanners: vuln
+        severity: CRITICAL,HIGH
+        ignore-unfixed: true
+        exit-code: '1'
+        skip-dirs: packages/core/tests
