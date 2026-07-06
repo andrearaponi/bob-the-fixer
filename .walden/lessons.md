@@ -25,3 +25,8 @@ Review this file before non-trivial work when the current request matches past m
 - Lesson: graph-algorithm fixtures must mirror the real tool's structure (a root/manifest that depends on all directs); synthetic graphs omitting the manifest misrepresent 'direct' vs the project package
 - Guardrail: for tool-output parsers, capture a real sample and derive a fixture from it — do not validate only against minimal hand-built graphs
 
+### 2026-07-06T18:16:22Z | harden-ci | design
+- Trigger: design.md validation failed: missing required section (recurrence of an earlier lesson)
+- Lesson: design.md must include ## Simplicity And Elegance Review (and the other required sections); review approve does not re-validate, so an invalid doc can be approved
+- Guardrail: run walden validate and confirm ok:true BEFORE walden review approve, never approve on a False validation
+
