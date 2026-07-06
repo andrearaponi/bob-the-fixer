@@ -175,6 +175,7 @@ main() {
     print_header "${EMOJI_GLOBE} STEP 7/8: MCP SERVER INSTALLATION"
     install_mcp_server
     record_action "mcp" "installed"
+    install_agent_skills
     pause
 
     # Step 8: Verification
@@ -722,6 +723,30 @@ exec_timeout_ms = 600_000
     # Re-enable exit on error
     set -e
 
+    return 0
+}
+
+# ============================================
+# AGENT SKILLS
+# ============================================
+
+# Copy Bob's agent skills (skills/*) into the user's Claude Code skills
+# directory. Best-effort: only runs from a checkout (curl-bootstrap mode has
+# no skills directory) and never fails the install.
+install_agent_skills() {
+    local skills_src="$SCRIPT_DIR/skills"
+    local skills_dst="$HOME/.claude/skills"
+
+    if [ ! -d "$skills_src" ]; then
+        return 0
+    fi
+
+    print_step "Installing Bob agent skills (bob-zerodebt, bob-issuecoverage)..."
+    if mkdir -p "$skills_dst" 2>/dev/null && cp -R "$skills_src/." "$skills_dst/" 2>/dev/null; then
+        print_success "✓ Agent skills installed in $skills_dst"
+    else
+        print_warning "Could not copy agent skills — install manually: cp -r skills/* ~/.claude/skills/"
+    fi
     return 0
 }
 

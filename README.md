@@ -11,7 +11,7 @@ Docs: https://bobthefixer.dev/docs
 ![License](https://img.shields.io/badge/license-AGPL--3.0-green)
 ![MCP](https://img.shields.io/badge/MCP-Compatible-brightgreen)
 
-Bob runs SonarQube locally (containerized), scans your code, and exposes **21 MCP tools** so assistants like Claude Code, Copilot CLI, Gemini CLI, or OpenAI Codex CLI can:
+Bob runs SonarQube locally (containerized), scans your code, and exposes **24 MCP tools** so assistants like Claude Code, Copilot CLI, Gemini CLI, or OpenAI Codex CLI can:
 
 - Scan a project and apply quality gates
 - Pull rich issue details (rule info + **plain-text** code context)
@@ -47,6 +47,23 @@ Then, open your AI CLI inside the repo you want to analyze and ask:
 ```
 Scan this project with Bob the Fixer, then show me details for the top critical issue.
 ```
+
+---
+
+## Agent Skills
+
+Bob ships agent skills — playbooks that teach your AI assistant the high-value workflows on top of Bob's MCP tools:
+
+- **`bob-zerodebt`** — drive technical debt to zero in a measurable loop: baseline scan → prioritized triage → batched fixes with rich issue context → re-scan verification → delta report, including the dependency (SCA) cycle with direct-dependency bumps.
+- **`bob-issuecoverage`** — close test-coverage gaps with behavior-asserting tests: prioritized uncovered files → per-file gap analysis → real tests → measured coverage delta.
+
+The installer offers to set them up. To install manually (Claude Code):
+
+```bash
+cp -r skills/* ~/.claude/skills/
+```
+
+Then just ask, e.g. *"zero out the technical debt in this repo"* — the skill guides the workflow.
 
 ---
 
