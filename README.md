@@ -57,11 +57,14 @@ Bob ships agent skills — playbooks that teach your AI assistant the high-value
 - **`bob-zerodebt`** — drive technical debt to zero in a measurable loop: baseline scan → prioritized triage → batched fixes with rich issue context → re-scan verification → delta report, including the dependency (SCA) cycle with direct-dependency bumps.
 - **`bob-issuecoverage`** — close test-coverage gaps with behavior-asserting tests: prioritized uncovered files → per-file gap analysis → real tests → measured coverage delta.
 
-The installer offers to set them up. To install manually (Claude Code):
+The installer sets them up for every detected coding agent, each through its native mechanism:
 
-```bash
-cp -r skills/* ~/.claude/skills/
-```
+| Agent | Mechanism | Manual install |
+| --- | --- | --- |
+| Claude Code | Agent Skills (`~/.claude/skills/`) | `cp -r skills/* ~/.claude/skills/` |
+| Gemini CLI (≥ 0.45) | Agent Skills standard | `gemini skills install ./skills/bob-zerodebt` (and `./skills/bob-issuecoverage`) |
+| Codex CLI | Custom prompts (`~/.codex/prompts/`) | copy each `skills/*/SKILL.md` body (without frontmatter) to `~/.codex/prompts/<name>.md`, then use `/bob-zerodebt` |
+| Copilot CLI | — | not supported (no user-level skill/prompt mechanism today) |
 
 Then just ask, e.g. *"zero out the technical debt in this repo"* — the skill guides the workflow.
 

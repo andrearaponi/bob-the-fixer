@@ -30,3 +30,8 @@ Review this file before non-trivial work when the current request matches past m
 - Lesson: design.md must include ## Simplicity And Elegance Review (and the other required sections); review approve does not re-validate, so an invalid doc can be approved
 - Guardrail: run walden validate and confirm ok:true BEFORE walden review approve, never approve on a False validation
 
+### 2026-07-06T20:06:52Z | skills-per-agent-install | execute
+- Trigger: hermetic smoke passed but the real gemini CLI hung on an interactive security confirmation (installer would block forever)
+- Lesson: stubbed smoke tests cannot catch interactivity; real CLIs may prompt where stubs exit 0
+- Guardrail: in installers, always run third-party CLIs with their non-interactive flag (--consent/--yes) AND stdin closed (< /dev/null); include one real-CLI operational run before shipping
+
