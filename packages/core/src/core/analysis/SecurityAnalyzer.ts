@@ -3,6 +3,7 @@
  * Analyzes security hotspots and provides detailed security information
  */
 
+import * as path from 'path';
 import { IProjectManager } from '../../infrastructure/interfaces/index.js';
 import { SonarQubeClient } from '../../sonar/index.js';
 import { getLogger, StructuredLogger } from '../../shared/logger/structured-logger.js';
@@ -181,7 +182,7 @@ export class SecurityAnalyzer {
     }
     if (includeFilePath && componentKey) {
       const relativePath = componentKey.replace(`${config.sonarProjectKey}:`, '');
-      const absolutePath = require('path').join(
+      const absolutePath = path.join(
         this.projectManager.getWorkingDirectory(),
         relativePath
       );

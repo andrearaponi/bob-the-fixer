@@ -1,4 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
+import * as crypto from 'crypto';
 import { ProjectContext } from '../infrastructure/interfaces/IProjectManager.js';
 import {
   ISonarAdmin,
@@ -359,7 +360,7 @@ export class SonarAdmin implements ISonarAdmin {
    */
   private generateProjectKey(context: ProjectContext): string {
     const baseName = context.name.toLowerCase().replace(/[^a-z0-9]/g, '-');
-    const pathHash = require('crypto').createHash('sha256').update(context.path).digest('hex').substring(0, 8);
+    const pathHash = crypto.createHash('sha256').update(context.path).digest('hex').substring(0, 8);
     return `${baseName}-${pathHash}`;
   }
 

@@ -10,6 +10,8 @@ import {
 import { TransportFactory, TransportMode, HTTPTransportConfig } from './transport/transport-factory.js';
 import dotenv from 'dotenv';
 import path from 'path';
+import * as os from 'os';
+import * as fs from 'fs';
 import { ProjectManager } from './project-manager.js';
 
 // Security and validation imports
@@ -73,8 +75,6 @@ class UniversalBobTheFixerMCPServer {
     // 3. Also load local bobthefixer.env for project-specific settings (SONAR_PROJECT_KEY)
     // ============================================================================
 
-    const os = require('os');
-    const fs = require('fs');
 
     // Suppress stdout/stderr during file operations to avoid breaking MCP protocol
     const originalStdoutWrite = process.stdout.write;

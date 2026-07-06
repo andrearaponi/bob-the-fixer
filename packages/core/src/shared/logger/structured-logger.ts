@@ -1,5 +1,6 @@
 import { sanitizeLogMessage } from '../../infrastructure/security/input-sanitization.js';
 import { randomBytes } from 'crypto';
+import * as fs from 'fs';
 
 export type LogLevel = 'error' | 'warn' | 'info' | 'debug';
 
@@ -255,9 +256,12 @@ export class StructuredLogger {
     // This is a placeholder - in production, use a proper file logging library
     // that handles rotation, buffering, and error handling
     try {
-      const fs = require('fs');
       const logLine = JSON.stringify(entry) + '\n';
-      fs.appendFileSync(this.config.filePath, logLine);
+      if (this.config.filePath) {
+        fs.appendFileSync(this.config.filePath, logLine);
+      } else {
+        this.outputToConsole(entry);
+      }
     } catch (error) {
       // Fallback to console if file logging fails (silently, don't use console.error which breaks MCP stdio)
       this.outputToConsole(entry);

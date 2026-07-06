@@ -14,9 +14,7 @@ import { IHandler } from './IHandler.js';
 /**
  * Arguments for quality gate handler
  */
-export interface QualityGateArgs {
-  // No specific arguments required
-}
+export type QualityGateArgs = Record<string, never>;
 
 /**
  * Injectable quality gate handler class

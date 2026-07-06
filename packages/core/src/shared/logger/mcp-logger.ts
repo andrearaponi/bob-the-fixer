@@ -1,6 +1,7 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { sanitizeLogMessage } from '../../infrastructure/security/input-sanitization.js';
 import { randomBytes } from 'crypto';
+import * as fs from 'fs';
 
 export type MCPLogLevel = 'emergency' | 'alert' | 'critical' | 'error' | 'warning' | 'notice' | 'info' | 'debug';
 
@@ -277,9 +278,12 @@ export class MCPLogger {
    */
   private outputToFile(logMessage: MCPLogMessage): void {
     try {
-      const fs = require('fs');
       const logLine = JSON.stringify(logMessage) + '\n';
-      fs.appendFileSync(this.config.filePath, logLine);
+      if (this.config.filePath) {
+        fs.appendFileSync(this.config.filePath, logLine);
+      } else {
+        this.outputToConsole(logMessage);
+      }
     } catch (error) {
       console.error('Failed to write to log file:', error);
       this.outputToConsole(logMessage);
