@@ -20,3 +20,8 @@ Review this file before non-trivial work when the current request matches past m
 - Lesson: Anche gli spec triviali devono includere l'intero set di sezioni richieste dal template Walden; 'e' piccolo' non esime dalla struttura che il validator impone.
 - Guardrail: Prima di aprire la review del design, includere sempre TUTTE le sezioni del template (Overview, Architecture, Options Considered, Simplicity And Elegance Review, Components, ... Verification Plan, Requirement Coverage), anche se brevi.
 
+### 2026-07-06T14:40:04Z | trivy-dependency-path | execute
+- Trigger: dogfooding on real Trivy output revealed the workspace 'direct' semantics that hand-built fixtures missed
+- Lesson: graph-algorithm fixtures must mirror the real tool's structure (a root/manifest that depends on all directs); synthetic graphs omitting the manifest misrepresent 'direct' vs the project package
+- Guardrail: for tool-output parsers, capture a real sample and derive a fixture from it — do not validate only against minimal hand-built graphs
+
