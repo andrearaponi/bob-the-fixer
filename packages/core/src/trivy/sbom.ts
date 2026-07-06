@@ -47,7 +47,9 @@ export async function generateSbom(opts: GenerateSbomOptions): Promise<SbomResul
   try {
     const res = await execFileAsync(
       'trivy',
-      ['fs', '--quiet', '--format', format, opts.projectPath],
+      // `--` terminates flag parsing so a path starting with `-` can't be
+      // smuggled as a Trivy flag (argv injection).
+      ['fs', '--quiet', '--format', format, '--', opts.projectPath],
       { maxBuffer: 64 * 1024 * 1024 }
     );
     stdout = res.stdout;

@@ -4,8 +4,12 @@ import * as os from 'os';
 import * as path from 'path';
 
 // Controllable execFile mock: tests set `h.impl` to a result or an Error.
-const h: { impl: (file: string, args: string[]) => { stdout?: string; stderr?: string } | Error } = {
+const h: {
+  impl: (file: string, args: string[]) => { stdout?: string; stderr?: string } | Error;
+  lastArgs: string[];
+} = {
   impl: () => ({ stdout: '{}' }),
+  lastArgs: [],
 };
 vi.mock('child_process', () => ({
   execFile: (file: string, args: string[], options: unknown, cb: unknown) => {
@@ -13,6 +17,7 @@ vi.mock('child_process', () => ({
       err: unknown,
       res?: { stdout: string; stderr: string }
     ) => void;
+    h.lastArgs = args;
     const r = h.impl(file, args);
     if (r instanceof Error) callback(r);
     else callback(null, { stdout: r.stdout ?? '', stderr: r.stderr ?? '' });
@@ -42,6 +47,9 @@ describe('generateSbom', () => {
     expect(res.componentCount).toBe(3);
     expect(res.spec).toBe('1.5');
     expect(await fs.readFile(res.outputPath, 'utf8')).toContain('CycloneDX');
+    // Hardening: the path follows `--` so it can't be smuggled as a Trivy flag.
+    expect(h.lastArgs[h.lastArgs.length - 2]).toBe('--');
+    expect(h.lastArgs[h.lastArgs.length - 1]).toBe(dir);
   });
 
   it('R1.AC1: spdx-json counts packages', async () => {

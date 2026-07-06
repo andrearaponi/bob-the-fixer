@@ -54,6 +54,8 @@ describe('TrivyScanner', () => {
     expect(h.lastCall.args).toContain('--format');
     // The path is passed as a single literal argument — no shell interpolation.
     expect(h.lastCall.args[h.lastCall.args.length - 1]).toBe('/repo/with spaces & metachars');
+    // …and is preceded by `--` so a path starting with `-` can't be smuggled as a flag.
+    expect(h.lastCall.args[h.lastCall.args.length - 2]).toBe('--');
   });
 
   it('R5.AC2: never leaks environment credentials in a scan error', async () => {
