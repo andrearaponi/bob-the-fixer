@@ -37,7 +37,8 @@ Work in small batches, severity first:
 
 1. Group Trivy findings by the direct dependency in the `Via:` path; prioritize findings marked *reachable (imported in source)* over *dormant*.
 2. Bump the direct dependency within its range; for transitives pinned by a parent, add the **narrowest** override that reaches the fixed version.
-3. Reinstall, build, and run the project's test suite — a green scan with red tests is not a fix. Re-run `trivy_scan_dependencies` until fixable HIGH/CRITICAL findings are gone.
+3. Upgrade **one package at a time** (install → build → tests → re-scan) so a breaking bump is immediately attributable and reversible; dependency upgrades are riskier than code fixes, so checkpoint with the user every few upgrades.
+4. Re-run `trivy_scan_dependencies` until fixable HIGH/CRITICAL findings are gone.
 
 ## Phase 5 — Verify & attest
 
