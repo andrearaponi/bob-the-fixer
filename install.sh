@@ -744,7 +744,7 @@ install_agent_skills() {
         return 0
     fi
 
-    print_step "Installing Bob agent skills (bob-zerodebt, bob-issuecoverage)..."
+    print_step "Installing Bob agent skills..."
 
     # Claude Code — native Agent Skills directory
     if command -v claude &> /dev/null; then
