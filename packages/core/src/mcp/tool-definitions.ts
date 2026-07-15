@@ -525,5 +525,82 @@ export const toolDefinitions = [
         }
       }
     }
+  },
+  {
+    name: 'sonar_transition_issue',
+    description: 'Persist a decided verdict on a SonarQube issue by transitioning it (confirm, resolve, falsepositive, accept, reopen), optionally attaching a rationale comment. Dismissive verdicts (falsepositive, accept) hide the finding and require confirm: true. Use only for a decided human/agent verdict, never to make a scan look clean.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        issue: {
+          type: 'string' as const,
+          description: 'Issue key (from sonar_get_issue_details or scan results)'
+        },
+        transition: {
+          type: 'string' as const,
+          enum: ['confirm', 'resolve', 'falsepositive', 'accept', 'reopen'],
+          description: 'The verdict to persist. "accept" is the modern "won\'t fix"; "reopen" reverses a prior verdict.'
+        },
+        comment: {
+          type: 'string' as const,
+          description: 'Optional rationale to attach to the issue alongside the transition'
+        },
+        confirm: {
+          type: 'boolean' as const,
+          description: 'Required (true) only for dismissive verdicts: falsepositive or accept'
+        }
+      },
+      required: ['issue', 'transition']
+    }
+  },
+  {
+    name: 'sonar_comment_issue',
+    description: 'Attach an auditable rationale comment to a SonarQube issue without changing its state.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        issue: {
+          type: 'string' as const,
+          description: 'Issue key'
+        },
+        text: {
+          type: 'string' as const,
+          description: 'Comment text (must be non-empty)'
+        }
+      },
+      required: ['issue', 'text']
+    }
+  },
+  {
+    name: 'sonar_change_hotspot_status',
+    description: 'Persist a security-hotspot review verdict: set status TO_REVIEW, or REVIEWED with a resolution (SAFE, FIXED, ACKNOWLEDGED), optionally with a comment. Marking a hotspot SAFE hides the finding and requires confirm: true. Use only for a decided human/agent verdict.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        hotspot: {
+          type: 'string' as const,
+          description: 'Hotspot key (from sonar_get_security_hotspots)'
+        },
+        status: {
+          type: 'string' as const,
+          enum: ['TO_REVIEW', 'REVIEWED'],
+          description: 'Target status'
+        },
+        resolution: {
+          type: 'string' as const,
+          enum: ['SAFE', 'FIXED', 'ACKNOWLEDGED'],
+          description: 'Required when status is REVIEWED: SAFE (not a risk), FIXED (remediated), or ACKNOWLEDGED (real, tracked elsewhere)'
+        },
+        comment: {
+          type: 'string' as const,
+          description: 'Optional review note'
+        },
+        confirm: {
+          type: 'boolean' as const,
+          description: 'Required (true) only when resolution is SAFE'
+        }
+      },
+      required: ['hotspot', 'status']
+    }
   }
 ];

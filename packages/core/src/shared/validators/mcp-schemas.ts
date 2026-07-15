@@ -165,6 +165,68 @@ export const SonarDeleteProjectSchema = z.object({
   confirm: z.boolean().refine(val => val === true, 'Must confirm deletion')
 });
 
+// Issue / hotspot mutation schemas (write-back verdicts).
+// Vocabularies are the ones the connected SonarQube (verified on 25.8) accepts.
+const IssueKeySchema = z.string()
+  .min(1, 'Issue key cannot be empty')
+  .max(400, 'Issue key too long');
+
+const HotspotKeySchema = z.string()
+  .min(1, 'Hotspot key cannot be empty')
+  .max(400, 'Hotspot key too long');
+
+const MutationCommentSchema = z.string()
+  .trim()
+  .min(1, 'Comment cannot be empty')
+  .max(4000, 'Comment too long');
+
+export const SonarTransitionIssueSchema = z.object({
+  issue: IssueKeySchema,
+  transition: z.enum(['confirm', 'resolve', 'falsepositive', 'accept', 'reopen']),
+  comment: MutationCommentSchema.optional(),
+  confirm: z.boolean().optional()
+}).superRefine((val, ctx) => {
+  // Finding-hiding verdicts require explicit confirmation.
+  const dismissive = val.transition === 'falsepositive' || val.transition === 'accept';
+  if (dismissive && val.confirm !== true) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['confirm'],
+      message: `Dismissive verdict "${val.transition}" hides the finding; pass confirm: true to proceed`
+    });
+  }
+});
+
+export const SonarCommentIssueSchema = z.object({
+  issue: IssueKeySchema,
+  text: MutationCommentSchema
+});
+
+export const SonarChangeHotspotStatusSchema = z.object({
+  hotspot: HotspotKeySchema,
+  status: z.enum(['TO_REVIEW', 'REVIEWED']),
+  resolution: z.enum(['SAFE', 'FIXED', 'ACKNOWLEDGED']).optional(),
+  comment: MutationCommentSchema.optional(),
+  confirm: z.boolean().optional()
+}).superRefine((val, ctx) => {
+  // A REVIEWED hotspot must carry a resolution.
+  if (val.status === 'REVIEWED' && !val.resolution) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['resolution'],
+      message: 'A REVIEWED hotspot requires a resolution: SAFE, FIXED, or ACKNOWLEDGED'
+    });
+  }
+  // Marking a hotspot SAFE hides the finding; require explicit confirmation.
+  if (val.resolution === 'SAFE' && val.confirm !== true) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['confirm'],
+      message: 'Marking a hotspot SAFE hides the finding; pass confirm: true to proceed'
+    });
+  }
+});
+
 // Custom error for validation failures
 export class ValidationError extends Error {
   constructor(

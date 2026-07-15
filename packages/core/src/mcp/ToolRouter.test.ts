@@ -16,9 +16,12 @@ describe('ToolRouter (single wiring table)', () => {
     expect(tools).toContain('sonar_scan_project');
     expect(tools).toContain('trivy_scan_dependencies');
     expect(tools).toContain('trivy_check_installation');
+    expect(tools).toContain('sonar_transition_issue');
+    expect(tools).toContain('sonar_comment_issue');
+    expect(tools).toContain('sonar_change_hotspot_status');
     expect(tools).toHaveLength(Object.keys(toolRoutes).length);
-    // 21 sonar tools + 2 trivy (SCA) tools.
-    expect(tools).toHaveLength(24);
+    // 21 read/scan sonar tools + 3 trivy (SCA/SBOM) tools + 3 sonar mutation tools.
+    expect(tools).toHaveLength(27);
   });
 
   it('reports tool existence', () => {

@@ -1,0 +1,162 @@
+{
+  "schema_version": "v1alpha1",
+  "feature": "issue-mutation-tools",
+  "tasks": {
+    "1.1": {
+      "task_fingerprint": "sha256:1157347d790bfc39b9ffacee04fe46d5b797ba6b26e39783ca24c44bf5632acc",
+      "requirements_fingerprint": "sha256:80a8e3403a63fbe6a4d59a514b96be35cc53d643135a8133f7f3e9130fc7140a",
+      "design_fingerprint": "sha256:2dd1c9e7c255e9fcbac66c6db44fa5cc436fbdd2c9e60fe23f59582f6427c475",
+      "tasks_fingerprint": "sha256:ff16fc0776bf578f940ac558b3ad2a15af7e29f5220763862cc27c8b48764e3e",
+      "code_identity": "sha256:c3aac90e716b4878232f4407e11a79ca783c3bed6588b50f90bac53847d60f0e",
+      "steps": [
+        {
+          "command": [
+            "sh",
+            "-c",
+            "cd packages/core \u0026\u0026 npx vitest run src/sonar/api/SonarFindingMutator.test.ts"
+          ],
+          "expected_exit": 0,
+          "actual_exit": 0,
+          "output_digest": "sha256:1e14735a00a20270521adfb3773fc76890e228a92988d46c339ce46ccf46edff"
+        }
+      ],
+      "result": "passed",
+      "verified_at": "2026-07-15T09:08:40Z"
+    },
+    "1.2": {
+      "task_fingerprint": "sha256:816c3e09726462e955cf9d65a3da091045a3f655a49cc40b5052b9d55747f4bc",
+      "requirements_fingerprint": "sha256:80a8e3403a63fbe6a4d59a514b96be35cc53d643135a8133f7f3e9130fc7140a",
+      "design_fingerprint": "sha256:2dd1c9e7c255e9fcbac66c6db44fa5cc436fbdd2c9e60fe23f59582f6427c475",
+      "tasks_fingerprint": "sha256:ff16fc0776bf578f940ac558b3ad2a15af7e29f5220763862cc27c8b48764e3e",
+      "code_identity": "sha256:93bc2fc4d69b7a56ce6a631afe2e43c4be7eada7d8028c37fcf74fc7079bd79f",
+      "steps": [
+        {
+          "command": [
+            "sh",
+            "-c",
+            "cd packages/core \u0026\u0026 npx vitest run src/shared/validators/mcp-schemas.test.ts"
+          ],
+          "expected_exit": 0,
+          "actual_exit": 0,
+          "output_digest": "sha256:8d1a9323f2004f1aac585d9554e00aac59b5bbe6a8cf3e928cdd4fe91ab0203f"
+        },
+        {
+          "command": [
+            "sh",
+            "-c",
+            "grep -q \"'falsepositive'\" packages/core/src/shared/validators/mcp-schemas.ts \u0026\u0026 grep -q \"'ACKNOWLEDGED'\" packages/core/src/shared/validators/mcp-schemas.ts \u0026\u0026 grep -q \"'REVIEWED'\" packages/core/src/shared/validators/mcp-schemas.ts"
+          ],
+          "expected_exit": 0,
+          "actual_exit": 0,
+          "output_digest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      ],
+      "result": "passed",
+      "verified_at": "2026-07-15T09:11:03Z"
+    },
+    "2.1": {
+      "task_fingerprint": "sha256:3266c2dd2b2d42ecfa02554caa516a8bed902c86824bc6ee80dc748f501617c6",
+      "requirements_fingerprint": "sha256:80a8e3403a63fbe6a4d59a514b96be35cc53d643135a8133f7f3e9130fc7140a",
+      "design_fingerprint": "sha256:2dd1c9e7c255e9fcbac66c6db44fa5cc436fbdd2c9e60fe23f59582f6427c475",
+      "tasks_fingerprint": "sha256:ff16fc0776bf578f940ac558b3ad2a15af7e29f5220763862cc27c8b48764e3e",
+      "code_identity": "sha256:62661d8d10f1b46cd7ff44c558dd915f59ebc0f85d1a1c83cd62abbe7eaf1331",
+      "steps": [
+        {
+          "command": [
+            "sh",
+            "-c",
+            "cd packages/core \u0026\u0026 npx vitest run src/mcp/handlers/transition-issue.handler.test.ts src/mcp/handlers/comment-issue.handler.test.ts src/mcp/handlers/change-hotspot-status.handler.test.ts"
+          ],
+          "expected_exit": 0,
+          "actual_exit": 0,
+          "output_digest": "sha256:ad0cc7ae9d5588984b1f0f6f06ae6c8950d7c63d7cc78bbbfa65d72516ddb7a8"
+        }
+      ],
+      "result": "passed",
+      "verified_at": "2026-07-15T09:14:11Z"
+    },
+    "2.2": {
+      "task_fingerprint": "sha256:891289f74d4950f1dd91b7534fd53c4edceb5adf32969ffceec32bffeef2b973",
+      "requirements_fingerprint": "sha256:80a8e3403a63fbe6a4d59a514b96be35cc53d643135a8133f7f3e9130fc7140a",
+      "design_fingerprint": "sha256:2dd1c9e7c255e9fcbac66c6db44fa5cc436fbdd2c9e60fe23f59582f6427c475",
+      "tasks_fingerprint": "sha256:ff16fc0776bf578f940ac558b3ad2a15af7e29f5220763862cc27c8b48764e3e",
+      "code_identity": "sha256:fbbd73ef06748cc0c9f414d8f567c67eedf5bbe8acf5c77f282b4189f5bd59e5",
+      "steps": [
+        {
+          "command": [
+            "sh",
+            "-c",
+            "cd packages/core \u0026\u0026 npx vitest run src/mcp/ToolRouter.test.ts"
+          ],
+          "expected_exit": 0,
+          "actual_exit": 0,
+          "output_digest": "sha256:8631f3e53c8ae88f2139e3ea977cccfa68e3a0a39ad0fb58bfd5ef45fda701ba"
+        },
+        {
+          "command": [
+            "sh",
+            "-c",
+            "grep -q \"name: 'sonar_transition_issue'\" packages/core/src/mcp/tool-definitions.ts \u0026\u0026 grep -q \"name: 'sonar_comment_issue'\" packages/core/src/mcp/tool-definitions.ts \u0026\u0026 grep -q \"name: 'sonar_change_hotspot_status'\" packages/core/src/mcp/tool-definitions.ts"
+          ],
+          "expected_exit": 0,
+          "actual_exit": 0,
+          "output_digest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      ],
+      "result": "passed",
+      "verified_at": "2026-07-15T09:16:07Z"
+    },
+    "3.1": {
+      "task_fingerprint": "sha256:6d24e3c2ae2b4de42d6740c5793163ac286084c4a4b7e0e66ee18be52802c0e7",
+      "requirements_fingerprint": "sha256:80a8e3403a63fbe6a4d59a514b96be35cc53d643135a8133f7f3e9130fc7140a",
+      "design_fingerprint": "sha256:2dd1c9e7c255e9fcbac66c6db44fa5cc436fbdd2c9e60fe23f59582f6427c475",
+      "tasks_fingerprint": "sha256:ff16fc0776bf578f940ac558b3ad2a15af7e29f5220763862cc27c8b48764e3e",
+      "code_identity": "sha256:fbbd73ef06748cc0c9f414d8f567c67eedf5bbe8acf5c77f282b4189f5bd59e5",
+      "steps": [
+        {
+          "command": [
+            "npm",
+            "run",
+            "build"
+          ],
+          "expected_exit": 0,
+          "actual_exit": 0,
+          "output_digest": "sha256:6806d1d07d83e2bc8e0e466ab44272102fc8e8330c91c3ce206ca37b265d40ce"
+        },
+        {
+          "command": [
+            "sh",
+            "-c",
+            "cd packages/core \u0026\u0026 npx vitest run"
+          ],
+          "expected_exit": 0,
+          "actual_exit": 0,
+          "output_digest": "sha256:1cf31108dd8f02ba40c18302166088ca23df4b22e10aeaffbe005e2cd61036b0"
+        }
+      ],
+      "result": "passed",
+      "verified_at": "2026-07-15T09:17:30Z"
+    },
+    "3.2": {
+      "task_fingerprint": "sha256:8e9fa598bc7719fc3bbe8cde433e90396d6e20c7b15b390258c386e05f1b842b",
+      "requirements_fingerprint": "sha256:80a8e3403a63fbe6a4d59a514b96be35cc53d643135a8133f7f3e9130fc7140a",
+      "design_fingerprint": "sha256:2dd1c9e7c255e9fcbac66c6db44fa5cc436fbdd2c9e60fe23f59582f6427c475",
+      "tasks_fingerprint": "sha256:ff16fc0776bf578f940ac558b3ad2a15af7e29f5220763862cc27c8b48764e3e",
+      "code_identity": "sha256:7e0ea43c4a9c1d96c4fc545d6173793699be3eef8029add297163d5ee1057d63",
+      "steps": [
+        {
+          "command": [
+            "sh",
+            "-c",
+            "bash scripts/verify-mutation-live.sh"
+          ],
+          "expected_exit": 0,
+          "actual_exit": 0,
+          "output_digest": "sha256:736d37879618623e7524fa677b9e02f66543b8f6345742574b00be357fef8c75"
+        }
+      ],
+      "result": "passed",
+      "verified_at": "2026-07-15T09:21:41Z"
+    }
+  }
+}

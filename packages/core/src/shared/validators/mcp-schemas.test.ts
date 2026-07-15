@@ -15,6 +15,9 @@ import {
   SonarGetDuplicationSummarySchema,
   SonarGetDuplicationDetailsSchema,
   SonarGetTechnicalDebtSchema,
+  SonarTransitionIssueSchema,
+  SonarCommentIssueSchema,
+  SonarChangeHotspotStatusSchema,
   validateInput,
   validateEnvironment,
   ValidationError,
@@ -695,5 +698,64 @@ describe('ValidationError', () => {
   it('should be instanceof Error', () => {
     const error = new ValidationError('Test error', []);
     expect(error).toBeInstanceOf(Error);
+  });
+});
+
+describe('SonarTransitionIssueSchema', () => {
+  it('R1.AC1: accepts a non-dismissive transition without confirmation', () => {
+    const parsed = validateInput(SonarTransitionIssueSchema, { issue: 'ISSUE-1', transition: 'confirm' }, 'sonar_transition_issue');
+    expect(parsed.transition).toBe('confirm');
+  });
+
+  it('R1.AC3: rejects a transition outside the supported vocabulary', () => {
+    expect(() => validateInput(SonarTransitionIssueSchema, { issue: 'ISSUE-1', transition: 'wontfix' }, 'sonar_transition_issue')).toThrow(ValidationError);
+    expect(SonarTransitionIssueSchema.safeParse({ issue: 'ISSUE-1', transition: 'bogus' }).success).toBe(false);
+  });
+
+  it('R4.AC1: rejects falsepositive/accept without confirm: true', () => {
+    expect(SonarTransitionIssueSchema.safeParse({ issue: 'ISSUE-1', transition: 'falsepositive' }).success).toBe(false);
+    expect(SonarTransitionIssueSchema.safeParse({ issue: 'ISSUE-1', transition: 'accept' }).success).toBe(false);
+    expect(SonarTransitionIssueSchema.safeParse({ issue: 'ISSUE-1', transition: 'falsepositive', confirm: false }).success).toBe(false);
+  });
+
+  it('R4.AC1: accepts falsepositive/accept when confirm: true', () => {
+    expect(SonarTransitionIssueSchema.safeParse({ issue: 'ISSUE-1', transition: 'falsepositive', confirm: true }).success).toBe(true);
+    expect(SonarTransitionIssueSchema.safeParse({ issue: 'ISSUE-1', transition: 'accept', confirm: true }).success).toBe(true);
+  });
+});
+
+describe('SonarCommentIssueSchema', () => {
+  it('R2.AC1: accepts a non-empty comment', () => {
+    const parsed = validateInput(SonarCommentIssueSchema, { issue: 'ISSUE-1', text: 'Reachable from the handler.' }, 'sonar_comment_issue');
+    expect(parsed.text).toBe('Reachable from the handler.');
+  });
+
+  it('R2.AC2: rejects empty or whitespace-only text', () => {
+    expect(SonarCommentIssueSchema.safeParse({ issue: 'ISSUE-1', text: '' }).success).toBe(false);
+    expect(SonarCommentIssueSchema.safeParse({ issue: 'ISSUE-1', text: '   ' }).success).toBe(false);
+  });
+});
+
+describe('SonarChangeHotspotStatusSchema', () => {
+  it('R3.AC1: accepts TO_REVIEW without a resolution', () => {
+    expect(SonarChangeHotspotStatusSchema.safeParse({ hotspot: 'H-1', status: 'TO_REVIEW' }).success).toBe(true);
+  });
+
+  it('R3.AC2: rejects REVIEWED without a resolution', () => {
+    expect(SonarChangeHotspotStatusSchema.safeParse({ hotspot: 'H-1', status: 'REVIEWED' }).success).toBe(false);
+  });
+
+  it('R3.AC3: rejects a status outside the supported vocabulary', () => {
+    expect(SonarChangeHotspotStatusSchema.safeParse({ hotspot: 'H-1', status: 'CLOSED' }).success).toBe(false);
+  });
+
+  it('R3.AC1: accepts REVIEWED with a non-dismissive resolution (ACKNOWLEDGED/FIXED)', () => {
+    expect(SonarChangeHotspotStatusSchema.safeParse({ hotspot: 'H-1', status: 'REVIEWED', resolution: 'ACKNOWLEDGED' }).success).toBe(true);
+    expect(SonarChangeHotspotStatusSchema.safeParse({ hotspot: 'H-1', status: 'REVIEWED', resolution: 'FIXED' }).success).toBe(true);
+  });
+
+  it('R4.AC1: rejects a SAFE resolution without confirm: true, accepts it with confirm: true', () => {
+    expect(SonarChangeHotspotStatusSchema.safeParse({ hotspot: 'H-1', status: 'REVIEWED', resolution: 'SAFE' }).success).toBe(false);
+    expect(SonarChangeHotspotStatusSchema.safeParse({ hotspot: 'H-1', status: 'REVIEWED', resolution: 'SAFE', confirm: true }).success).toBe(true);
   });
 });

@@ -30,6 +30,9 @@ import { handleGenerateConfig } from './handlers/generate-config.handler.js';
 import { handleTrivyScanDependencies } from './handlers/trivy-scan.handler.js';
 import { handleTrivyCheckInstallation } from './handlers/trivy-check.handler.js';
 import { handleTrivyGenerateSbom } from './handlers/trivy-sbom.handler.js';
+import { handleTransitionIssue } from './handlers/transition-issue.handler.js';
+import { handleCommentIssue } from './handlers/comment-issue.handler.js';
+import { handleChangeHotspotStatus } from './handlers/change-hotspot-status.handler.js';
 
 /**
  * Handler function signature
@@ -63,7 +66,10 @@ export const toolRoutes: Record<string, ToolHandler> = {
   sonar_generate_config: handleGenerateConfig,
   trivy_scan_dependencies: handleTrivyScanDependencies,
   trivy_check_installation: handleTrivyCheckInstallation,
-  trivy_generate_sbom: handleTrivyGenerateSbom
+  trivy_generate_sbom: handleTrivyGenerateSbom,
+  sonar_transition_issue: handleTransitionIssue,
+  sonar_comment_issue: handleCommentIssue,
+  sonar_change_hotspot_status: handleChangeHotspotStatus
 };
 
 /**
