@@ -9,7 +9,7 @@ Drive technical debt down in a measurable loop: baseline → triage → batched 
 
 ## Prerequisites
 
-- The `bob-the-fixer` MCP server is connected (24 Sonar/Trivy tools available).
+- The `bob-the-fixer` MCP server is connected (27 Sonar/Trivy tools available).
 - Check config with `sonar_config_manager` (`action: "view"`); if broken, run `sonar_diagnose_permissions`.
 - For the dependency cycle, confirm Trivy first with `trivy_check_installation`.
 
@@ -52,11 +52,11 @@ Work in batches of 5–10 issues:
 
 1. `sonar_get_quality_gate` — aim for green.
 2. `sonar_generate_report` (`format: "summary"`) plus the measured delta vs the baseline (issues by severity, debt effort, vulns closed).
-3. List anything intentionally left open (won't-fix candidates, unfixable vulns) for the user to decide.
+3. List anything intentionally left open (won't-fix candidates, unfixable vulns) for the user to decide. Once the user confirms a finding is a false positive or won't-fix, persist that verdict with `sonar_transition_issue` (`transition: "falsepositive"` or `"accept"`, `confirm: true`, `comment:` the reason) so it stops recurring and the decision stays auditable.
 
 ## Guardrails (hard rules)
 
-- **Never** mark an issue false-positive or won't-fix without explicit human confirmation.
+- **Never** mark an issue false-positive or won't-fix on your own; only after explicit human confirmation, then persist it via `sonar_transition_issue` (`confirm: true`). Never dismiss findings to hit the target or turn the gate green.
 - **No suppressions** (`// NOSONAR`, disable comments, coverage/lint exclusions) without explicit approval — fix the cause, not the signal.
 - **Re-scan after every batch**; never report progress from memory.
 - **Stop on regressions**: a batch that adds new issues gets reviewed before anything else proceeds.
