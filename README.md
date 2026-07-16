@@ -7,16 +7,18 @@ Docs: https://bobthefixer.dev/docs
 
 [![CI](https://github.com/andrearaponi/bob-the-fixer/actions/workflows/ci.yml/badge.svg)](https://github.com/andrearaponi/bob-the-fixer/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/andrearaponi/bob-the-fixer/branch/main/graph/badge.svg)](https://codecov.io/gh/andrearaponi/bob-the-fixer)
-![Version](https://img.shields.io/badge/version-0.5.5-blue)
+![Version](https://img.shields.io/badge/version-0.6.0-blue)
 ![License](https://img.shields.io/badge/license-AGPL--3.0-green)
 ![MCP](https://img.shields.io/badge/MCP-Compatible-brightgreen)
 
-Bob runs SonarQube locally (containerized), scans your code, and exposes **24 MCP tools** so assistants like Claude Code, Copilot CLI, Gemini CLI, or OpenAI Codex CLI can:
+Bob runs SonarQube locally (containerized), scans your code, and exposes **27 MCP tools** so assistants like Claude Code, Copilot CLI, Gemini CLI, or OpenAI Codex CLI can:
 
 - Scan a project and apply quality gates
 - Pull rich issue details (rule info + **plain-text** code context)
 - Prioritize work (patterns, tech debt, coverage gaps, duplication)
+- Find vulnerable dependencies with Trivy (dependency paths, reachability triage, SBOM)
 - Iterate: fix → test → re-scan
+- Persist triage verdicts back to SonarQube (false positive, accept, hotspot review) so decisions survive the next scan
 
 > Privacy note: Sonar analysis runs on your SonarQube instance (often `localhost`). If your AI assistant uses a cloud model, any code you send to the model follows that provider's policy.
 
@@ -56,7 +58,7 @@ Bob ships agent skills — playbooks that teach your AI assistant the high-value
 
 - **`bob-zerodebt`** — drive technical debt to zero in a measurable loop: baseline scan → prioritized triage → batched fixes with rich issue context → re-scan verification → delta report, including the dependency (SCA) cycle with direct-dependency bumps.
 - **`bob-issuecoverage`** — close test-coverage gaps with behavior-asserting tests: prioritized uncovered files → per-file gap analysis → real tests → measured coverage delta.
-- **`bob-securitysweep`** — end-to-end security sweep across the three surfaces: guided hotspot review (verdicts stay human), SAST vulnerability fixes with data-flow context, dependency remediation (reachability-first), closed by a double re-scan and a CycloneDX SBOM.
+- **`bob-securitysweep`** — end-to-end security sweep across the three surfaces: guided hotspot review (verdicts stay human and are persisted to SonarQube), SAST vulnerability fixes with data-flow context, dependency remediation (reachability-first), closed by a double re-scan and a CycloneDX SBOM.
 
 The installer sets them up for every detected coding agent, each through its native mechanism:
 
@@ -75,6 +77,7 @@ Then just ask, e.g. *"zero out the technical debt in this repo"* — the skill g
 
 - Docs: https://bobthefixer.dev/docs
 - Manual install (offline): `docs/MANUAL_INSTALLATION.md`
+- Changelog: `CHANGELOG.md`
 - Issues: https://github.com/andrearaponi/bob-the-fixer/issues
 
 ---
