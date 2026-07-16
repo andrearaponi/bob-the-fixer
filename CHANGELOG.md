@@ -22,7 +22,7 @@ completes a major internal refactoring. MCP tools: **21 → 27**.
   - `trivy_scan_dependencies` — dependency vulnerabilities enriched with the full dependency path (`Via:`), the direct dependency to bump, and reachability triage (*reachable — imported in source* vs *dormant*).
   - `trivy_check_installation` — Trivy availability and version check, with install hints.
   - `trivy_generate_sbom` — CycloneDX / SPDX SBOM generation.
-- **Agent skills** (`skills/`): `bob-zerodebt`, `bob-issuecoverage`, `bob-securitysweep` — workflow playbooks installed per detected coding agent (Claude Code, Gemini CLI, Codex CLI) by the installer. Security verdicts stay human; the skills now persist the user's decisions through the mutation tools.
+- **Agent skills** (`skills/`): `bob-zerodebt`, `bob-issuecoverage`, `bob-securitysweep` — workflow playbooks installed per detected coding agent (Claude Code, Gemini CLI, Codex CLI, GitHub Copilot CLI) by the installer. Security verdicts stay human; the skills now persist the user's decisions through the mutation tools.
 - **CI hardening**: ESLint gate, Trivy security gate (fails the build on fixable HIGH/CRITICAL findings), `npm ci`, and a supported-Node matrix (20.x / 22.x).
 
 ### Changed

@@ -67,7 +67,7 @@ The installer sets them up for every detected coding agent, each through its nat
 | Claude Code | Agent Skills (`~/.claude/skills/`) | `cp -r skills/* ~/.claude/skills/` |
 | Gemini CLI (≥ 0.45) | Agent Skills standard | `gemini skills install ./skills/<name>` (one per skill directory) |
 | Codex CLI | Custom prompts (`~/.codex/prompts/`) | copy each `skills/*/SKILL.md` body (without frontmatter) to `~/.codex/prompts/<name>.md`, then use `/bob-zerodebt` |
-| Copilot CLI | — | not supported (no user-level skill/prompt mechanism today) |
+| Copilot CLI (with `copilot skill` support) | Agent Skills (`~/.copilot/skills/`) | `cp -r skills/* ~/.copilot/skills/` (check with `copilot skill list`) |
 
 Then just ask, e.g. *"zero out the technical debt in this repo"* — the skill guides the workflow.
 

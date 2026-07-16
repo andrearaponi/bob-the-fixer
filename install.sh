@@ -736,7 +736,7 @@ exec_timeout_ms = 600_000
 #   claude  -> ~/.claude/skills/ (native Agent Skills, SKILL.md)
 #   gemini  -> gemini skills install <path> (Agent Skills standard, >= 0.45)
 #   codex   -> ~/.codex/prompts/<name>.md (skill body as a custom slash prompt)
-#   copilot -> no user-level skill mechanism today (documented in README)
+#   copilot -> ~/.copilot/skills/ (native Agent Skills, SKILL.md)
 install_agent_skills() {
     local skills_src="$SCRIPT_DIR/skills"
 
@@ -769,6 +769,17 @@ install_agent_skills() {
             print_success "✓ Gemini CLI: skills installed (check with: gemini skills list)"
         else
             print_warning "Gemini CLI: skills install failed (needs >= 0.45) — manual: gemini skills install ./skills/<name>"
+        fi
+    fi
+
+    # GitHub Copilot CLI — native Agent Skills directory (personal skills).
+    # The path is documented by the CLI itself (`copilot skill --help`).
+    if command -v copilot &> /dev/null; then
+        local copilot_dst="$HOME/.copilot/skills"
+        if mkdir -p "$copilot_dst" 2>/dev/null && cp -R "$skills_src/." "$copilot_dst/" 2>/dev/null; then
+            print_success "✓ Copilot CLI: skills installed in $copilot_dst (check with: copilot skill list)"
+        else
+            print_warning "Copilot CLI: could not copy skills — manual: cp -r skills/* ~/.copilot/skills/"
         fi
     fi
 
