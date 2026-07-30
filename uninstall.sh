@@ -58,6 +58,7 @@ main() {
     echo "  - SonarQube and PostgreSQL containers"
     echo "  - Container volumes (data will be lost)"
     echo "  - MCP server registration from AI CLIs"
+    echo "  - Bob agent skills (bob-*) from AI CLIs"
     echo "  - Bob configuration files (.env, logs)"
     echo "  - Global credentials (~/.bobthefixer/)"
     echo "  - Build output (dist folders)"
@@ -83,9 +84,10 @@ main() {
     remove_containers
     pause
 
-    # Step 2: Remove MCP server from CLIs
-    print_header "${EMOJI_ROBOT} STEP 2/4: REMOVING MCP SERVER"
+    # Step 2: Remove MCP server and agent skills from CLIs
+    print_header "${EMOJI_ROBOT} STEP 2/4: REMOVING MCP SERVER & AGENT SKILLS"
     remove_mcp_server
+    remove_agent_skills
     pause
 
     # Step 3: Clean configuration files
@@ -243,6 +245,65 @@ remove_mcp_server() {
 
     # Re-enable exit on error
     set -e
+}
+
+# ============================================
+# AGENT SKILLS
+# ============================================
+
+# Remove Bob's agent skills from every coding agent, mirroring
+# install_agent_skills() in install.sh. Only the skill names shipped in skills/
+# are touched — anything else living in those directories is left alone.
+#   claude  -> ~/.claude/skills/<name>/
+#   copilot -> ~/.copilot/skills/<name>/
+#   codex   -> ~/.codex/prompts/<name>.md
+#   gemini  -> gemini skills uninstall <name>
+remove_agent_skills() {
+    local skills_src="$SCRIPT_DIR/skills"
+
+    if [ ! -d "$skills_src" ]; then
+        return 0
+    fi
+
+    print_step "Removing Bob agent skills..."
+
+    local removed=0
+    local skill_dir skill_name base
+
+    for skill_dir in "$skills_src"/*/; do
+        [ -d "$skill_dir" ] || continue
+        skill_name="$(basename "$skill_dir")"
+
+        # Claude Code and Copilot CLI — native Agent Skills directories
+        for base in "$HOME/.claude/skills" "$HOME/.copilot/skills"; do
+            if [ -d "$base/$skill_name" ]; then
+                if rm -rf "$base/$skill_name" 2>/dev/null; then
+                    removed=$((removed + 1))
+                fi
+            fi
+        done
+
+        # Codex CLI — custom prompt file
+        if [ -f "$HOME/.codex/prompts/$skill_name.md" ]; then
+            if rm -f "$HOME/.codex/prompts/$skill_name.md" 2>/dev/null; then
+                removed=$((removed + 1))
+            fi
+        fi
+
+        # Gemini CLI — the CLI owns its skill store; stdin closed so it never hangs
+        if command -v gemini &> /dev/null; then
+            if gemini skills uninstall "$skill_name" < /dev/null &> /dev/null; then
+                removed=$((removed + 1))
+            fi
+        fi
+    done
+
+    if [ "$removed" -gt 0 ]; then
+        print_success "✓ Removed $removed agent skill installation(s)"
+    else
+        print_info "No Bob agent skills found"
+    fi
+    echo ""
 }
 
 # ============================================
