@@ -42,6 +42,11 @@ if [[ -f "$SCRIPT_DIR/lib/os-detect.sh" ]]; then
     source "$SCRIPT_DIR/lib/os-detect.sh"
 fi
 
+# Agent skills: an update must deliver the same skills a fresh install does.
+if [[ -f "$SCRIPT_DIR/lib/agent-skills.sh" ]]; then
+    source "$SCRIPT_DIR/lib/agent-skills.sh"
+fi
+
 # ============================================
 # CLI ARGUMENT PARSING
 # ============================================
@@ -207,6 +212,7 @@ perform_core_update() {
         echo "  git pull origin main"
         echo "  npm install"
         echo "  npm run build"
+        echo "  install Bob agent skills"
         return 0
     fi
 
@@ -219,6 +225,11 @@ perform_core_update() {
 
     print_step "Building project..."
     npm run build
+
+    # Refresh the agent skills so they match the code that was just built.
+    if declare -f install_agent_skills > /dev/null; then
+        install_agent_skills
+    fi
 
     print_success "Core update completed!"
 }
@@ -251,6 +262,7 @@ perform_infra_update() {
         echo "  $COMPOSE_CMD down"
         echo "  git pull origin main"
         echo "  npm install && npm run build"
+        echo "  install Bob agent skills"
         echo "  $COMPOSE_CMD pull"
         echo "  $COMPOSE_CMD up -d"
         return 0
@@ -270,6 +282,11 @@ perform_infra_update() {
 
     print_step "Building project..."
     npm run build
+
+    # Refresh the agent skills so they match the code that was just built.
+    if declare -f install_agent_skills > /dev/null; then
+        install_agent_skills
+    fi
 
     # Pull new images
     print_step "Pulling new container images..."
