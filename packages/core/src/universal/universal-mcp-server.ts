@@ -30,7 +30,7 @@ import {
   wrapError
 } from '../shared/errors/custom-errors.js';
 import { getLifecycleManager, ServerLifecycleManager } from './server-lifecycle.js';
-import pkg from '../../package.json';
+import { APP_VERSION } from '../shared/version/app-version.js';
 
 // Layered architecture: MCP layer imports
 import { toolDefinitions } from '../mcp/tool-definitions.js';
@@ -44,7 +44,6 @@ export interface ServerConfig {
   httpConfig?: HTTPTransportConfig;
 }
 
-const APP_VERSION = pkg.version;
 const GITHUB_REPOSITORY = 'andrearaponi/bob-the-fixer';
 
 class UniversalBobTheFixerMCPServer {
@@ -135,7 +134,7 @@ class UniversalBobTheFixerMCPServer {
     this.server = new Server(
       {
         name: 'universal-bob-the-fixer',
-        version: '2.0.0',
+        version: APP_VERSION,
       },
       {
         capabilities: {
@@ -171,7 +170,7 @@ class UniversalBobTheFixerMCPServer {
           capabilities: { tools: {} },
           serverInfo: {
             name: 'universal-bob-the-fixer',
-            version: '2.0.0'
+            version: APP_VERSION
           }
         };
       }

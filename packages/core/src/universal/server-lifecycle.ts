@@ -1,4 +1,5 @@
 import { StructuredLogger, getLogger } from '../shared/logger/structured-logger.js';
+import { APP_VERSION } from '../shared/version/app-version.js';
 
 export interface HealthCheckResult {
   status: 'healthy' | 'degraded' | 'unhealthy';
@@ -180,7 +181,7 @@ export class ServerLifecycleManager {
     const result: HealthCheckResult = {
       status: 'healthy',
       timestamp: new Date(),
-      version: '2.0.0',
+      version: APP_VERSION,
       uptime: Date.now() - this.startTime.getTime(),
       checks: {}
     };
@@ -282,7 +283,7 @@ export class ServerLifecycleManager {
    */
   getServerInfo() {
     return {
-      version: '2.0.0',
+      version: APP_VERSION,
       name: 'universal-bob-the-fixer',
       startTime: this.startTime.toISOString(),
       uptime: Date.now() - this.startTime.getTime(),
