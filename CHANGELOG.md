@@ -5,7 +5,7 @@ All notable changes to Bob the Fixer are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.6.0] - 2026-07-16
+## [0.6.0] - 2026-07-30
 
 Bob learns to write back. This release closes the loop from "scan and fix" to
 "scan, fix, and **persist the verdict**", adds a full dependency-security (SCA)
@@ -40,6 +40,8 @@ completes a major internal refactoring. MCP tools: **21 → 27**.
 ### Security
 
 - Resolved all 63 known npm dependency vulnerabilities (63 → 0) via in-range updates and narrowly-scoped overrides; the CI Trivy gate keeps it that way.
+- Refreshed the dependency pins at release time to clear newly-published advisories: `fast-uri` 3.1.4 (two HIGH host-confusion CVEs), `hono` 4.12.32, `@hono/node-server` 1.19.17. No fixable HIGH/CRITICAL vulnerability remains in the shipped dependency tree.
+- Known and accepted: one moderate advisory remains in a transitive of the MCP SDK (`@hono/node-server` `serve-static` path traversal on Windows, fixed only in a 2.x major); that code path is not used by Bob. ESLint's own transitive advisories are dev-tooling only and are never shipped.
 - Fixed a command injection and a token leak in the .NET analysis path.
 - Terminated flag parsing with `--` before user-supplied paths in Trivy invocations (argv flag-smuggling hardening).
 - Removed a dead, unauthenticated `/api/issues` REST endpoint from the HTTP transport.
