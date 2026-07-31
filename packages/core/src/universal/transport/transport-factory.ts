@@ -9,6 +9,7 @@ export interface HTTPTransportConfig {
   host?: string;
   basePath?: string;
   sessionIdGenerator?: (() => string) | undefined;
+  onsessioninitialized?: (sessionId: string) => void;
 }
 
 export class TransportFactory {
@@ -27,7 +28,8 @@ export class TransportFactory {
         const sessionIdGenerator = config?.sessionIdGenerator ?? (() => randomUUID());
 
         return new StreamableHTTPServerTransport({
-          sessionIdGenerator
+          sessionIdGenerator,
+          onsessioninitialized: config?.onsessioninitialized
         });
       }
 

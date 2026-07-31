@@ -5,11 +5,16 @@ import {
   InitializeRequestSchema,
   ListToolsRequestSchema,
   CallToolRequestSchema,
-  SetLevelRequestSchema
+  SetLevelRequestSchema,
+  isInitializeRequest
 } from '@modelcontextprotocol/sdk/types.js';
+import { randomUUID } from 'crypto';
 import { TransportFactory, TransportMode, HTTPTransportConfig } from './transport/transport-factory.js';
+import type { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import dotenv from 'dotenv';
 import path from 'path';
+import express from 'express';
+import type { Server as HttpServer } from 'http';
 import { ProjectManager } from './project-manager.js';
 
 // Security and validation imports
@@ -53,6 +58,7 @@ class UniversalBobTheBuilderMCPServer {
   private readonly lifecycle: ServerLifecycleManager = getLifecycleManager();
   private readonly config: ServerConfig;
   private versionChecker?: VersionChecker;
+  private httpServer?: HttpServer;
 
   constructor(config: ServerConfig = {}) {
     // ============================================================================
@@ -365,12 +371,89 @@ class UniversalBobTheBuilderMCPServer {
 
       // Create transport based on configuration
       const transportMode = this.config.transport!;
-      const transport = transportMode === 'stdio'
-        ? TransportFactory.create('stdio')
-        : TransportFactory.create('http', this.config.httpConfig);
 
+      if (transportMode === 'stdio') {
+        const transport = TransportFactory.create('stdio');
+        await this.server.connect(transport);
+      } else {
+        // StreamableHTTPServerTransport does not open a TCP listener by
+        // itself: it only knows how to handle a single (req, res) pair
+        // handed to it by an HTTP framework, and each transport instance
+        // may only ever complete ONE 'initialize' handshake — reusing the
+        // same transport for a later client (e.g. a second "test connection"
+        // click) fails with "Server already initialized". So we keep a
+        // map of session-id -> transport and mint a fresh transport for
+        // every new initialize request, following the MCP SDK's own
+        // Streamable HTTP example.
+        const port = this.config.httpConfig?.port ?? 3000;
+        const host = this.config.httpConfig?.host ?? '0.0.0.0';
+        const basePath = this.config.httpConfig?.basePath ?? '/mcp/v1/messages';
+        const transports: Record<string, StreamableHTTPServerTransport> = {};
 
-      await this.server.connect(transport);
+        const handleSession = async (req: express.Request, res: express.Response) => {
+          const sessionId = req.headers['mcp-session-id'] as string | undefined;
+
+          try {
+            if (sessionId && transports[sessionId]) {
+              await transports[sessionId].handleRequest(req, res, req.body);
+              return;
+            }
+
+            if (!sessionId && req.method === 'POST' && isInitializeRequest(req.body)) {
+              const transport = TransportFactory.create('http', {
+                ...this.config.httpConfig,
+                sessionIdGenerator: () => randomUUID(),
+                onsessioninitialized: (newSessionId: string) => {
+                  transports[newSessionId] = transport;
+                }
+              } as HTTPTransportConfig);
+
+              transport.onclose = () => {
+                const sid = transport.sessionId;
+                if (sid) {
+                  delete transports[sid];
+                }
+              };
+
+              await this.server.connect(transport);
+              await transport.handleRequest(req, res, req.body);
+              return;
+            }
+
+            res.status(400).json({
+              jsonrpc: '2.0',
+              error: { code: -32000, message: 'Bad Request: No valid session ID provided' },
+              id: null
+            });
+          } catch (error) {
+            this.logger.error('Error handling MCP HTTP request', error as Error);
+            if (!res.headersSent) {
+              res.status(500).json({
+                jsonrpc: '2.0',
+                error: { code: -32603, message: 'Internal server error' },
+                id: null
+              });
+            }
+          }
+        };
+
+        const app = express();
+        app.use(express.json());
+
+        app.get('/health', (_req, res) => {
+          res.json({ status: 'ok' });
+        });
+
+        app.post(basePath, handleSession);
+        app.get(basePath, handleSession);
+        app.delete(basePath, handleSession);
+
+        await new Promise<void>((resolve, reject) => {
+          const srv = app.listen(port, host, () => resolve());
+          srv.once('error', reject);
+          this.httpServer = srv;
+        });
+      }
 
 
       // Server is now ready for client communication
